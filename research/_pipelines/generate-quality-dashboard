@@ -1,0 +1,1154 @@
+#!/usr/bin/env python3
+"""generate-quality-dashboard — Quality dashboard for the 25-niche pipeline.
+
+Reads QUALITY_METRICS.yaml, FRESHNESS_VIOLATION_LOG.yaml, TOOL_ERROR_LOG.yaml,
+and SLI_DEFINITIONS.yaml. Produces a summary report with:
+  - SLI compliance (6 SLIs against their targets)
+  - Staleness hotspots (per-data-type staleness rates + trend)
+  - Error-prone tools (per-tool error counts and top error types)
+  - Evidence quality trend (per-niche sequence + linear trend)
+  - Wall-clock drift (actual vs. estimated per niche)
+  - Alert status (warning/critical threshold checks)
+  - Auto-generated recommendations (heuristic rules)
+
+Run after every 5th niche, or on demand with --since NICHE_ID
+for incremental dashboards.
+
+Usage:
+    ./generate-quality-dashboard [--output FILE] [--format yaml|json|text] [--since NICHE_ID] [--dry-run]
+
+Exit codes:
+    0   SUCCESS           All checks pass, no critical alerts
+    1   BLOCKED        (CRITICAL_ALERTS — one or more alerts firing above critical thresholds)
+    2   WARNING           Degraded data sources (missing/corrupted YAML files)
+    3   INTERNAL_ERROR    Script bug or missing dependency
+    4   INVALID_INPUT     Invalid arguments
+"""
+
+import sys
+import argparse
+import json
+import re
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional, Tuple
+
+# ── Ensure lib/pipeline_ops.py is importable ──────────────────────────────────
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+
+from lib.pipeline_ops import (
+    yaml, load_yaml_safe, emit_result, emit_log, ExitCode,
+    now_utc, format_date,
+    STALE_RATIO_BLOCK_THRESHOLD,
+    find_quality_metrics, find_freshness_violation_log,
+    find_tool_error_log, find_sli_definitions, find_credit_budget,
+    set_agent_mode, set_quiet_mode,
+)
+
+
+# ── Constants ─────────────────────────────────────────────────────────────────
+ERROR_RATE_THRESHOLD = 0.05
+WALL_CLOCK_WARNING = 40
+DASHBOARD_LATEST = "DASHBOARD_LATEST.yaml"
+CREDITS_PER_HOUR = 60
+UPTIME_PENALTY_PER_ERROR = 0.5
+SLI_MARGIN_RATIO = 0.05
+TREND_SLOPE_THRESHOLD = 0.003
+TREND_DEVIATION_RATIO = 0.1
+P95_FRACTION = 0.95
+
+
+# ── Niche ID comparison helpers (for --since filtering) ───────────────────────
+
+def _niche_sort_key(niche_id: str) -> Tuple[int, int]:
+    """Return a sortable key for a niche ID.
+
+    CAL-A, CAL-B sort before N-001..N-025.
+    """
+    niche_id = niche_id.upper()
+    if niche_id.startswith("CAL-"):
+        suffix = niche_id[4:]
+        return (0, ord(suffix) if len(suffix) == 1 else 99)
+    m = re.match(r'^N-0*(\d+)$', niche_id)
+    if m:
+        return (1, int(m.group(1)))
+    return (2, 0)
+
+
+def _niche_ge(a: str, b: str) -> bool:
+    """Return True if niche ID *a* >= *b* (lexicographic by sort key)."""
+    return _niche_sort_key(a) >= _niche_sort_key(b)
+
+
+def _filter_niches_since(
+    data: Dict[str, Any],
+    since: str,
+) -> Dict[str, Any]:
+    """Keep only entries whose niche ID >= *since*."""
+    return {k: v for k, v in data.items() if _niche_ge(k, since)}
+
+
+# ── Data loading ──────────────────────────────────────────────────────────────
+
+class DataSources:
+    """Container for all loaded data sources with degraded-source tracking."""
+
+    def __init__(self, since: Optional[str] = None):
+        self.quality_metrics: Dict[str, Any] = {}
+        self.freshness_violations: List[Dict[str, Any]] = []
+        self.tool_errors: List[Dict[str, Any]] = []
+        self.sli_definitions: Dict[str, Any] = {}
+        self.credit_budget: Dict[str, Any] = {}
+        self.warnings: List[str] = []
+        self.errors: List[str] = []
+        self.has_degraded_source: bool = False
+        self._since = since
+
+    def _load(self, path: Path, label: str, default: Any = {}) -> Dict[str, Any]:
+        """Load a YAML data source, returning *default* on failure."""
+        try:
+            data = load_yaml_safe(path)
+            if data is None:
+                self.warnings.append(f"{label}: file not found at {path}")
+                self.has_degraded_source = True
+                return default
+            return data
+        except ValueError as e:
+            self.errors.append(f"{label}: corrupted — {e}")
+            self.has_degraded_source = True
+            return default
+
+    def _load_list(self, path: Path, label: str) -> List[Dict[str, Any]]:
+        """Load a YAML list source, returning [] on failure."""
+        data = self._load(path, label, {"violations": [], "errors": []})
+        # Sniff which key holds the list
+        for key in ("violations", "errors", "entries"):
+            if key in data and isinstance(data[key], list):
+                return data[key]
+        return []
+
+    def load_all(self) -> None:
+        """Load all four data sources."""
+        self.quality_metrics = self._load(
+            find_quality_metrics(), "QUALITY_METRICS.yaml",
+            self._default_quality_metrics(),
+        )
+        self.freshness_violations = self._load_list(
+            find_freshness_violation_log(), "FRESHNESS_VIOLATION_LOG.yaml",
+        )
+        self.tool_errors = self._load_list(
+            find_tool_error_log(), "TOOL_ERROR_LOG.yaml",
+        )
+        self.sli_definitions = self._load(
+            find_sli_definitions(), "SLI_DEFINITIONS.yaml", {"slis": {}, "alert_thresholds": {}}
+        )
+        self.credit_budget = self._load(
+            find_credit_budget(), "CREDIT_BUDGET.yaml",
+            {"firecrawl_remaining": 0, "dataforseo_remaining": 0, "niches": {}},
+        )
+
+        # Post-process: ruamel.yaml loads empty YAML mappings (keys with only
+        # comments) as None. Convert these to empty dicts so .get() chaining
+        # and .items() iteration don't fail with AttributeError.
+        qm = self.quality_metrics
+        for _none_key in ("per_niche_evidence", "per_niche_wall_clock"):
+            if qm.get(_none_key) is None:
+                qm[_none_key] = {}
+
+        # Apply --since filter to per-niche data
+        if self._since:
+            for key in ("per_niche_evidence", "per_niche_wall_clock"):
+                if key in qm and isinstance(qm[key], dict):
+                    qm[key] = _filter_niches_since(qm[key], self._since)
+
+    @staticmethod
+    def _default_quality_metrics() -> Dict[str, Any]:
+        return {
+            "last_updated": format_date(now_utc()),
+            "per_data_type_staleness": {},
+            "per_tool_errors": {},
+            "per_niche_evidence": {},
+            "per_niche_wall_clock": {},
+            "cross_niche_summary": {},
+        }
+
+
+# ── SLI compliance ────────────────────────────────────────────────────────────
+
+def _parse_pct_target(target: str) -> Optional[float]:
+    """Extract a percentage threshold from a target string like '>95%'."""
+    m = re.search(r'([><])\s*(\d+(?:\.\d+)?)\s*%', target)
+    if m:
+        return float(m.group(2))
+    return None
+
+
+def _parse_time_target(target: str) -> Optional[float]:
+    """Extract a time threshold (minutes) from a target like '<45 minutes'."""
+    m = re.search(r'([><])\s*(\d+(?:\.\d+)?)\s*minute', target)
+    if m:
+        return float(m.group(2))
+    return None
+
+
+def _parse_within_target(target: str) -> Optional[float]:
+    """Extract a 'Within X%' threshold."""
+    m = re.search(r'Within\s+(\d+(?:\.\d+)?)\s*%', target, re.IGNORECASE)
+    if m:
+        return float(m.group(1))
+    return None
+
+
+def _format_sli_actual(actual: float, sli_id: str) -> str:
+    """Format an SLI actual value for display."""
+    if sli_id in ("fetch_success_rate", "freshness_compliance", "evidence_quality",
+                  "pipeline_availability"):
+        return f"{actual:.1f}%"
+    if sli_id == "credit_forecast_accuracy":
+        return f"{actual:.1f}% deviation"
+    if sli_id == "per_niche_wall_clock":
+        return f"{actual:.0f} min"
+    return f"{actual:.2f}"
+
+
+def _compute_sli_actual(
+    sli_id: str,
+    ds: DataSources,
+) -> Optional[float]:
+    """Compute the actual value for an SLI from available data.
+
+    Returns None when there is insufficient data to compute.
+    """
+    qm = ds.quality_metrics
+    violations = ds.freshness_violations
+    errors = ds.tool_errors
+    cns = qm.get("cross_niche_summary", {})
+    pte = qm.get("per_tool_errors", {})
+
+    if sli_id == "fetch_success_rate":
+        # Derive from per-tool errors + error rates
+        total_errors = 0
+        total_ops = 0
+        for tool_name, tool_data in pte.items():
+            if isinstance(tool_data, dict):
+                total_errors += tool_data.get("total_errors", 0)
+                err_rate = tool_data.get("error_rate", 0.0)
+                if err_rate > 0:
+                    total_ops += total_errors / err_rate  # Derive ops count
+        if total_ops == 0:
+            if total_errors == 0:
+                return 100.0  # No errors means 100% success
+            return 0.0
+        return (1.0 - total_errors / total_ops) * 100.0
+
+    if sli_id == "freshness_compliance":
+        agg_rate = cns.get("aggregate_staleness_rate", None)
+        if agg_rate is not None:
+            return (1.0 - agg_rate) * 100.0
+        # Derive from violation log vs total sources
+        total_violations = len(violations)
+        # Estimate total sources from QUALITY_METRICS per_data_type_staleness
+        total_sources = 0
+        for dt_name, dt_data in qm.get("per_data_type_staleness", {}).items():
+            if isinstance(dt_data, dict):
+                total_sources += dt_data.get("total_sources", 0)
+        if total_sources == 0:
+            return 100.0  # No data means no violations
+        return (1.0 - total_violations / total_sources) * 100.0
+
+    if sli_id == "credit_forecast_accuracy":
+        # From CREDIT_BUDGET per-niche estimate vs actual
+        niches = ds.credit_budget.get("niches", {})
+        deviations = []
+        for nid, ndata in niches.items():
+            if isinstance(ndata, dict):
+                est = ndata.get("estimated_credits", 0)
+                act = ndata.get("actual_credits", 0)
+                if est and est > 0:
+                    deviations.append(abs(act - est) / est * 100.0)
+        if not deviations:
+            return 0.0  # No data = no deviation
+        return sum(deviations) / len(deviations)
+
+    if sli_id == "per_niche_wall_clock":
+        # Compute from per-niche wall-clock data
+        wc = qm.get("per_niche_wall_clock", {})
+        actuals = []
+        for nid, ndata in wc.items():
+            if isinstance(ndata, dict):
+                actual = ndata.get("actual_minutes", None)
+                if actual is not None:
+                    actuals.append(float(actual))
+        if not actuals:
+            return None
+        # Return p50 for single-value display
+        sorted_a = sorted(actuals)
+        mid = len(sorted_a) // 2
+        p50 = sorted_a[mid] if len(sorted_a) % 2 else (sorted_a[mid-1] + sorted_a[mid]) / 2.0
+        return p50
+
+    if sli_id == "evidence_quality":
+        agg_eq = cns.get("aggregate_evidence_quality", None)
+        if agg_eq is not None:
+            return agg_eq * 100.0
+        # Derive from per-niche evidence
+        ev = qm.get("per_niche_evidence", {})
+        values = []
+        for nid, ndata in ev.items():
+            if isinstance(ndata, dict):
+                eq = ndata.get("evidence_quality", None)
+                if eq is not None:
+                    values.append(float(eq))
+        if not values:
+            return None
+        return sum(values) / len(values) * 100.0
+
+    if sli_id == "pipeline_availability":
+        # Estimate from tool errors - no system-level errors = available
+        total_errors = 0
+        for tool_name, tool_data in pte.items():
+            if isinstance(tool_data, dict):
+                total_errors += tool_data.get("total_errors", 0)
+        if total_errors == 0:
+            return 100.0
+        # Estimate total operations from QUALITY_METRICS
+        total_ops = 0
+        for dt_name, dt_data in qm.get("per_data_type_staleness", {}).items():
+            if isinstance(dt_data, dict):
+                total_ops += dt_data.get("total_sources", 0)
+        if total_ops == 0:
+            return 99.0  # Conservative estimate when no data
+        success = total_ops - total_errors
+        return max(0.0, success / total_ops * 100.0)
+
+    return None
+
+
+def _check_sli_status(
+    actual: Optional[float],
+    target: str,
+    sli_id: str,
+) -> Tuple[str, str]:
+    """Compare actual value against target, return (status, actual_display).
+
+    Status is COMPLIANT, AT_RISK, or NON_COMPLIANT.
+    """
+    if actual is None:
+        return "NO_DATA", "N/A"
+
+    actual_display = _format_sli_actual(actual, sli_id)
+
+    # Parse target direction and threshold
+    pct = _parse_pct_target(target)
+    if pct is not None:
+        # ">95%" → actual must be > pct
+        if actual > pct:
+            return "COMPLIANT", actual_display
+        margin = pct * SLI_MARGIN_RATIO
+        if actual > pct - margin:
+            return "AT_RISK", actual_display
+        return "NON_COMPLIANT", actual_display
+
+    time_val = _parse_time_target(target)
+    if time_val is not None:
+        # "<45 minutes" → actual must be < time_val
+        if actual < time_val:
+            return "COMPLIANT", actual_display
+        margin = time_val * TREND_DEVIATION_RATIO  # 10% margin
+        if actual < time_val + margin:
+            return "AT_RISK", actual_display
+        return "NON_COMPLIANT", actual_display
+
+    within = _parse_within_target(target)
+    if within is not None:
+        # "Within 20% of estimate" → actual deviation must be < within
+        if actual < within:
+            return "COMPLIANT", actual_display
+        margin = within * TREND_DEVIATION_RATIO
+        if actual < within + margin:
+            return "AT_RISK", actual_display
+        return "NON_COMPLIANT", actual_display
+
+    return "UNKNOWN", actual_display
+
+
+def _compute_sli_compliance(
+    ds: DataSources,
+    wall_clock_p95: Optional[float],
+) -> List[Dict[str, Any]]:
+    """Compute SLI compliance for all 6 SLIs."""
+    slis_raw = ds.sli_definitions.get("slis", {})
+    results: List[Dict[str, Any]] = []
+
+    for sli_id in (
+        "fetch_success_rate", "freshness_compliance",
+        "credit_forecast_accuracy", "per_niche_wall_clock",
+        "evidence_quality", "pipeline_availability",
+    ):
+        sli_entry = slis_raw.get(sli_id, {})
+        target = sli_entry.get("target", "unknown")
+
+        actual = _compute_sli_actual(sli_id, ds)
+
+        # Special handling for per_niche_wall_clock: include p95
+        actual_for_status = actual
+        extra = {}
+        if sli_id == "per_niche_wall_clock":
+            extra["actual_p95"] = f"{wall_clock_p95:.0f} min" if wall_clock_p95 is not None else "N/A"
+
+        status, actual_display = _check_sli_status(actual_for_status, target, sli_id)
+
+        entry: Dict[str, Any] = {
+            "sli": sli_id,
+            "target": target,
+            "actual": actual_display,
+            "status": status,
+        }
+        entry.update(extra)
+        results.append(entry)
+
+    return results
+
+
+# ── Staleness hotspots ────────────────────────────────────────────────────────
+
+def _compute_staleness_hotspots(ds: DataSources) -> List[Dict[str, Any]]:
+    """Compute per-data-type staleness with trend from QUALITY_METRICS."""
+    pds = ds.quality_metrics.get("per_data_type_staleness", {})
+    hotspots: List[Dict[str, Any]] = []
+
+    for dt_name, dt_data in pds.items():
+        if not isinstance(dt_data, dict):
+            continue
+        rate = dt_data.get("staleness_rate", 0.0)
+        if rate is None:
+            rate = 0.0
+
+        # Try to determine trend by comparing staleness_violations to total_sources
+        # A decreasing ratio across niches = IMPROVING
+        # For now, compare to the aggregate rate
+        cns = ds.quality_metrics.get("cross_niche_summary", {})
+        agg_rate = cns.get("aggregate_staleness_rate", 0.0) or 0.0
+        if agg_rate > 0 and rate > 0:
+            if rate < agg_rate * 0.9:
+                trend = "IMPROVING"
+            elif rate > agg_rate * 1.1:
+                trend = "DEGRADING"
+            else:
+                trend = "STABLE"
+        else:
+            trend = "INSUFFICIENT_DATA"
+
+        hotspots.append({
+            "data_type": dt_name,
+            "staleness_rate": round(rate, 4),
+            "trend": trend,
+        })
+
+    # Sort by highest staleness rate first
+    hotspots.sort(key=lambda h: h["staleness_rate"], reverse=True)
+    return hotspots
+
+
+# ── Error-prone tools ─────────────────────────────────────────────────────────
+
+def _compute_error_prone_tools(ds: DataSources) -> List[Dict[str, Any]]:
+    """Compute per-tool error metrics with top error type."""
+    pte = ds.quality_metrics.get("per_tool_errors", {})
+    raw_errors = ds.tool_errors
+
+    results: List[Dict[str, Any]] = []
+    for tool_name, tool_data in pte.items():
+        if not isinstance(tool_data, dict):
+            continue
+        total_errors = tool_data.get("total_errors", 0) or 0
+        error_rate = tool_data.get("error_rate", 0.0) or 0.0
+        last_error = tool_data.get("last_error", None)
+
+        # Determine top error type from raw error log
+        error_types: Dict[str, int] = {}
+        for entry in raw_errors:
+            if isinstance(entry, dict) and entry.get("tool") == tool_name:
+                etype = entry.get("error_code", "UNKNOWN")
+                error_types[etype] = error_types.get(etype, 0) + 1
+
+        top_error = "NONE"
+        if error_types:
+            top_name, top_count = max(error_types.items(), key=lambda x: x[1])
+            top_error = f"{top_name} ({top_count} occurrences)"
+
+        results.append({
+            "tool": tool_name,
+            "total_errors": total_errors,
+            "error_rate": round(error_rate, 4),
+            "top_error": top_error,
+        })
+
+    results.sort(key=lambda t: t["total_errors"], reverse=True)
+    return results
+
+
+# ── Evidence quality trend ────────────────────────────────────────────────────
+
+def _compute_linear_trend_direction(values: List[float]) -> str:
+    """Compute the direction of a linear trend from a sequence of values.
+
+    Returns IMPROVING, DEGRADING, STABLE, or INSUFFICIENT_DATA.
+    """
+    n = len(values)
+    if n < 2:
+        return "INSUFFICIENT_DATA"
+
+    # Simple linear regression: slope = (n*sum(xy) - sum(x)*sum(y)) / (n*sum(x^2) - sum(x)^2)
+    indices = list(range(n))
+    n_float = float(n)
+    sum_x = sum(indices)
+    sum_y = sum(values)
+    sum_xy = sum(i * y for i, y in zip(indices, values))
+    sum_xx = sum(i * i for i in indices)
+
+    denominator = n_float * sum_xx - sum_x * sum_x
+    if denominator == 0:
+        return "STABLE"
+
+    slope = (n_float * sum_xy - sum_x * sum_y) / denominator
+
+    if slope > TREND_SLOPE_THRESHOLD:
+        return "IMPROVING"
+    if slope < -TREND_SLOPE_THRESHOLD:
+        return "DEGRADING"
+    return "STABLE"
+
+
+def _compute_evidence_quality_trend(ds: DataSources) -> Dict[str, Any]:
+    """Compute the evidence quality trend across niches in sequence."""
+    ev = ds.quality_metrics.get("per_niche_evidence", {})
+    if not ev:
+        return {"trend": "NO_DATA", "niches": []}
+
+    # Sort by niche ID
+    sorted_niches = sorted(ev.items(), key=lambda x: _niche_sort_key(x[0]))
+    series: List[Dict[str, Any]] = []
+    values: List[float] = []
+
+    for nid, ndata in sorted_niches:
+        if isinstance(ndata, dict):
+            eq = ndata.get("evidence_quality", None)
+            if eq is not None:
+                series.append({"niche_id": nid, "evidence_quality": float(eq)})
+                values.append(float(eq))
+
+    if not values:
+        return {"trend": "NO_DATA", "niches": []}
+
+    trend = _compute_linear_trend_direction(values)
+    return {"niches": series, "trend": trend}
+
+
+# ── Wall-clock drift ──────────────────────────────────────────────────────────
+
+def _compute_wall_clock_drift(ds: DataSources) -> Dict[str, Any]:
+    """Analyze wall-clock actual vs. estimated across niches."""
+    wc = ds.quality_metrics.get("per_niche_wall_clock", {})
+    if not wc:
+        return {"trend": "NO_DATA", "niches": []}
+
+    sorted_niches = sorted(wc.items(), key=lambda x: _niche_sort_key(x[0]))
+    series: List[Dict[str, Any]] = []
+    actuals: List[float] = []
+
+    for nid, ndata in sorted_niches:
+        if isinstance(ndata, dict):
+            est = ndata.get("estimated_minutes")
+            act = ndata.get("actual_minutes")
+            entry: Dict[str, Any] = {"niche_id": nid}
+            if est is not None:
+                entry["estimated_minutes"] = int(est)
+            if act is not None:
+                entry["actual_minutes"] = int(act)
+                actuals.append(float(act))
+            if est is not None or act is not None:
+                series.append(entry)
+
+    if not actuals:
+        return {"trend": "NO_DATA", "niches": series}
+
+    # Check for learning curve: is actual time decreasing?
+    trend = _compute_linear_trend_direction([-a for a in actuals])
+
+    # Detect learning curve effect: if negative slope (time decreasing)
+    # vs. positive slope (time increasing / drift)
+    raw_slope_trend = _compute_linear_trend_direction(actuals)
+    if trend == "IMPROVING":
+        label = "IMPROVING (learning curve effect)"
+    elif trend == "DEGRADING":
+        label = "DEGRADING (time drift increasing)"
+    else:
+        label = "STABLE"
+
+    return {"niches": series, "trend": label}
+
+
+# ── Alert status ──────────────────────────────────────────────────────────────
+
+def _compute_alert_status(ds: DataSources) -> Dict[str, Any]:
+    """Compare current values against warning/critical thresholds."""
+    thresholds = ds.sli_definitions.get("alert_thresholds", {})
+    if not thresholds:
+        return {}
+
+    pte = ds.quality_metrics.get("per_tool_errors", {})
+    pds = ds.quality_metrics.get("per_data_type_staleness", {})
+    wc = ds.quality_metrics.get("per_niche_wall_clock", {})
+
+    alerts: Dict[str, Any] = {}
+
+    # firecrawl_error_rate
+    fc_data = pte.get("firecrawl", {})
+    fc_err_rate = (fc_data.get("error_rate", 0.0) or 0.0) * 100.0  # Convert to percent
+    fc_thresh = thresholds.get("firecrawl_error_rate", {})
+    alerts["firecrawl_error_rate"] = _eval_alert(
+        fc_err_rate, fc_thresh, "firecrawl_error_rate",
+    )
+
+    # dataforseo_error_rate
+    df_data = pte.get("dataforseo", {})
+    df_err_rate = (df_data.get("error_rate", 0.0) or 0.0) * 100.0
+    df_thresh = thresholds.get("dataforseo_error_rate", {})
+    alerts["dataforseo_error_rate"] = _eval_alert(
+        df_err_rate, df_thresh, "dataforseo_error_rate",
+    )
+
+    # staleness_rate (aggregate)
+    cns = ds.quality_metrics.get("cross_niche_summary", {})
+    stale_rate = (cns.get("aggregate_staleness_rate", 0.0) or 0.0) * 100.0
+    stale_thresh = thresholds.get("staleness_rate", {})
+    alerts["staleness_rate"] = _eval_alert(
+        stale_rate, stale_thresh, "staleness_rate",
+    )
+
+    # credit_burn_rate
+    cb = ds.credit_budget
+    burn = 0
+    niches = cb.get("niches", {})
+    total_credits = cb.get("firecrawl_remaining", 0)
+    # Estimate burn from average credit consumption per niche
+    if niches and len(niches) > 0:
+        total_consumed = sum(
+            nd.get("actual_credits", 0) if isinstance(nd, dict) else 0
+            for nd in niches.values()
+        )
+        burn = total_consumed / len(niches) * CREDITS_PER_HOUR  # credits per hour
+    burn_thresh = thresholds.get("credit_burn_rate", {})
+    alerts["credit_burn_rate"] = _eval_alert(
+        burn, burn_thresh, "credit_burn_rate",
+    )
+
+    # niche_wall_clock (p95)
+    actuals = []
+    for nid, ndata in wc.items():
+        if isinstance(ndata, dict):
+            act = ndata.get("actual_minutes")
+            if act is not None:
+                actuals.append(float(act))
+    wc_p95 = sorted(actuals)[int(len(actuals) * P95_FRACTION)] if len(actuals) > 1 else (actuals[0] if actuals else 0)
+    wc_thresh = thresholds.get("niche_wall_clock", {})
+    alerts["niche_wall_clock"] = _eval_alert(
+        wc_p95, wc_thresh, "niche_wall_clock",
+    )
+
+    return alerts
+
+
+def _eval_alert(
+    current: float,
+    threshold: Dict[str, Any],
+    label: str,
+) -> Dict[str, Any]:
+    """Evaluate a single alert threshold, returning status dict."""
+    warning = threshold.get("warning", None)
+    critical = threshold.get("critical", None)
+    unit = threshold.get("unit", "")
+
+    status = "OK"
+    if critical is not None and current >= float(critical):
+        status = "CRITICAL"
+    elif warning is not None and current >= float(warning):
+        status = "WARNING"
+
+    return {
+        "current": round(current, 1),
+        "warning": warning,
+        "critical": critical,
+        "unit": unit,
+        "status": status,
+    }
+
+
+# ── Auto-generated recommendations ────────────────────────────────────────────
+
+def _generate_recommendations(
+    ds: DataSources,
+    sli_compliance: List[Dict[str, Any]],
+    staleness_hotspots: List[Dict[str, Any]],
+    error_tools: List[Dict[str, Any]],
+    wall_clock: Dict[str, Any],
+    evidence_trend: Dict[str, Any],
+) -> List[str]:
+    """Generate recommendations from heuristic rules."""
+    recommendations: List[str] = []
+
+    # Rule 1: Any SLI AT_RISK / NON_COMPLIANT → investigate
+    sli_issues = [s for s in sli_compliance if s["status"] in ("AT_RISK", "NON_COMPLIANT")]
+    if sli_issues:
+        names = ", ".join(s["sli"] for s in sli_issues)
+        recommendations.append(
+            f"SLI investigation needed: {names} — review measurement methods and tune pipeline config."
+        )
+
+    # Rule 2: Any data_type staleness > 10% → re-fetch
+    stale_types = [h for h in staleness_hotspots if h.get("staleness_rate", 0) > STALE_RATIO_BLOCK_THRESHOLD]
+    if stale_types:
+        names = ", ".join(h["data_type"] for h in stale_types[:5])
+        recommendations.append(
+            f"Data staleness alert: {names} exceed 10% stale rate. Schedule re-fetch for affected niches."
+        )
+
+    # Rule 3: Any tool error_rate > 5% → config review
+    buggy_tools = [t for t in error_tools if t.get("error_rate", 0) > ERROR_RATE_THRESHOLD]
+    if buggy_tools:
+        names = ", ".join(t["tool"] for t in buggy_tools[:3])
+        recommendations.append(
+            f"Tool errors above threshold: {names}. Review timeout, retry config, and API status."
+        )
+
+    # Rule 4: wall_clock p95 > 40 min → concurrency reduction
+    wc = wall_clock.get("niches", [])
+    p95 = 0.0
+    actuals = [n.get("actual_minutes", 0) for n in wc if isinstance(n.get("actual_minutes"), (int, float))]
+    if len(actuals) > 1:
+        p95 = sorted(actuals)[int(len(actuals) * P95_FRACTION)]
+    elif len(actuals) == 1:
+        p95 = actuals[0]
+    if p95 > WALL_CLOCK_WARNING:
+        recommendations.append(
+            f"Wall-clock p95 is {p95:.0f} min (approaching 45 min hard timeout). "
+            "Consider reducing concurrency or increasing parallelism limits."
+        )
+
+    # Rule 5: evidence_quality DEGRADING → calibration re-check
+    if evidence_trend.get("trend") == "DEGRADING":
+        recommendations.append(
+            "Evidence quality is DECLINING across niches. Re-run calibration on current niche. "
+            "Check for rater drift, schema enforcement gaps, or data quality degradation."
+        )
+
+    # Rule 6: credit_forecast_accuracy > 30%
+    for sli in sli_compliance:
+        if sli["sli"] == "credit_forecast_accuracy" and sli["status"] in ("AT_RISK", "NON_COMPLIANT"):
+            recommendations.append(
+                "Credit forecast accuracy deviating significantly. Re-estimate per-niche credit costs "
+                "based on actual consumption data."
+            )
+
+    if not recommendations:
+        recommendations.append("All quality indicators healthy. No action required.")
+
+    return recommendations
+
+
+# ── Wall-clock p95 helper (reused) ────────────────────────────────────────────
+
+def _compute_wall_clock_p95(ds: DataSources) -> Optional[float]:
+    """Compute p95 wall-clock minutes from per_niche_wall_clock data."""
+    wc = ds.quality_metrics.get("per_niche_wall_clock", {})
+    actuals = []
+    for nid, ndata in wc.items():
+        if isinstance(ndata, dict):
+            act = ndata.get("actual_minutes")
+            if act is not None:
+                actuals.append(float(act))
+    if not actuals:
+        return None
+    if len(actuals) == 1:
+        return actuals[0]
+    sorted_a = sorted(actuals)
+    idx = int(len(sorted_a) * P95_FRACTION)
+    return sorted_a[min(idx, len(sorted_a) - 1)]
+
+
+# ── Dashboard assembly ────────────────────────────────────────────────────────
+
+def _assemble_dashboard(ds: DataSources) -> Dict[str, Any]:
+    """Assemble the full dashboard data structure."""
+    cns = ds.quality_metrics.get("cross_niche_summary", {})
+    pte = ds.quality_metrics.get("per_tool_errors", {})
+
+    # Determine pipeline uptime
+    total_errors = sum(
+        td.get("total_errors", 0) if isinstance(td, dict) else 0
+        for td in pte.values()
+    )
+    uptime = 100.0 if total_errors == 0 else max(0.0, 100.0 - total_errors * UPTIME_PENALTY_PER_ERROR)
+
+    wall_clock_p95 = _compute_wall_clock_p95(ds)
+    sli_compliance = _compute_sli_compliance(ds, wall_clock_p95)
+    staleness = _compute_staleness_hotspots(ds)
+    err_tools = _compute_error_prone_tools(ds)
+    ev_trend = _compute_evidence_quality_trend(ds)
+    wc_drift = _compute_wall_clock_drift(ds)
+    alerts = _compute_alert_status(ds)
+    recs = _generate_recommendations(
+        ds, sli_compliance, staleness, err_tools, wc_drift, ev_trend,
+    )
+
+    # Determine which exit code to use based on alert status
+    has_critical = any(
+        a.get("status") == "CRITICAL" for a in alerts.values()
+    )
+
+    dashboard: Dict[str, Any] = {
+        "dashboard": {
+            "generated_at": now_utc().isoformat(),
+            "generated_by": "generate-quality-dashboard",
+            "data_sources": {
+                "quality_metrics": str(find_quality_metrics()),
+                "freshness_violations": str(find_freshness_violation_log()),
+                "tool_errors": str(find_tool_error_log()),
+                "sli_definitions": str(find_sli_definitions()),
+            },
+            "summary": {
+                "total_niches_completed": cns.get("total_niches_completed", 0),
+                "aggregate_evidence_quality": (
+                    cns.get("aggregate_evidence_quality", None)
+                ),
+                "aggregate_staleness_rate": (
+                    cns.get("aggregate_staleness_rate", None)
+                ),
+                "pipeline_uptime_pct": round(uptime, 1),
+            },
+            "sli_compliance": sli_compliance,
+            "staleness_hotspots": staleness,
+            "error_prone_tools": err_tools,
+            "evidence_quality_trend": ev_trend,
+            "wall_clock_drift": wc_drift,
+            "alert_status": alerts,
+            "recommendations": recs,
+        },
+        "_meta": {
+            "has_critical_alerts": has_critical,
+            "has_degraded_source": ds.has_degraded_source,
+        },
+    }
+
+    return dashboard
+
+
+# ── Output formatting ─────────────────────────────────────────────────────────
+
+def _format_yaml(dashboard: Dict[str, Any]) -> str:
+    """Format dashboard as YAML string."""
+    # Strip _meta before rendering
+    output = {k: v for k, v in dashboard.items() if k != "_meta"}
+    import io
+    buf = io.StringIO()
+    yaml.dump(output, buf)
+    return buf.getvalue()
+
+
+def _format_json(dashboard: Dict[str, Any]) -> str:
+    """Format dashboard as JSON string."""
+    output = {k: v for k, v in dashboard.items() if k != "_meta"}
+    return json.dumps(output, indent=2, default=str)
+
+
+def _format_text(dashboard: Dict[str, Any]) -> str:
+    """Format dashboard as human-readable text with optional ANSI colors."""
+    has_color = sys.stdout.isatty()
+    d = dashboard.get("dashboard", {})
+
+    def _c(code: str, text: str) -> str:
+        return f"\033[{code}m{text}\033[0m" if has_color else text
+
+    lines: List[str] = []
+    lines.append(_c("1;36", "=" * 64))
+    lines.append(_c("1;36", "  CLARITYREV NICHE PIPELINE — QUALITY DASHBOARD"))
+    lines.append(_c("36", f"  Generated: {d.get('generated_at', 'unknown')}"))
+    lines.append(_c("36", f"  By: {d.get('generated_by', 'unknown')}"))
+    lines.append(_c("1;36", "=" * 64))
+    lines.append("")
+
+    # Summary
+    s = d.get("summary", {})
+    lines.append(_c("1", "SUMMARY"))
+    lines.append(f"  Niches completed:     {s.get('total_niches_completed', 0)}")
+    eq = s.get("aggregate_evidence_quality")
+    lines.append(f"  Evidence quality:     {eq:.1%}" if eq is not None else "  Evidence quality:     NO DATA")
+    sr = s.get("aggregate_staleness_rate")
+    lines.append(f"  Staleness rate:       {sr:.1%}" if sr is not None else "  Staleness rate:       NO DATA")
+    lines.append(f"  Pipeline uptime:      {s.get('pipeline_uptime_pct', 0):.1f}%")
+    lines.append("")
+
+    # SLI compliance
+    lines.append(_c("1", "SLI COMPLIANCE"))
+    for sli in d.get("sli_compliance", []):
+        color = {"COMPLIANT": "32", "AT_RISK": "33", "NON_COMPLIANT": "31", "NO_DATA": "90", "UNKNOWN": "90"}
+        status_color = color.get(sli["status"], "0")
+        extra = ""
+        if "actual_p95" in sli:
+            extra = f" (p95: {sli['actual_p95']})"
+        lines.append(
+            f"  {_c('1', sli['sli']):45s} "
+            f"{_c(status_color, sli['status']):14s} "
+            f"{sli['actual']:>12s}{extra}"
+        )
+    lines.append("")
+
+    # Staleness hotspots
+    hotspots = d.get("staleness_hotspots", [])
+    if hotspots:
+        lines.append(_c("1", "STALENESS HOTSPOTS"))
+        for h in hotspots:
+            rate = h.get("staleness_rate", 0)
+            trend = h.get("trend", "")
+            tc = {"IMPROVING": "32", "DEGRADING": "31", "STABLE": "33", "INSUFFICIENT_DATA": "90"}
+            lines.append(
+                f"  {h['data_type']:30s} rate={rate:.1%}  "
+                f"{_c(tc.get(trend, '0'), trend)}"
+            )
+        lines.append("")
+
+    # Error-prone tools
+    tools = d.get("error_prone_tools", [])
+    if tools:
+        lines.append(_c("1", "ERROR-PRONE TOOLS"))
+        for t in tools:
+            lines.append(
+                f"  {t['tool']:25s} errors={t['total_errors']:4d}  "
+                f"rate={t['error_rate']:.1%}  top={t['top_error']}"
+            )
+        lines.append("")
+
+    # Evidence quality trend
+    ev = d.get("evidence_quality_trend", {})
+    lines.append(_c("1", "EVIDENCE QUALITY TREND"))
+    lines.append(f"  Direction: {ev.get('trend', 'NO_DATA')}")
+    for niche in ev.get("niches", []):
+        lines.append(f"    {niche['niche_id']}: {niche['evidence_quality']:.2f}")
+    lines.append("")
+
+    # Wall-clock drift
+    wc = d.get("wall_clock_drift", {})
+    lines.append(_c("1", "WALL-CLOCK DRIFT"))
+    lines.append(f"  Trend: {wc.get('trend', 'NO_DATA')}")
+    for n in wc.get("niches", []):
+        parts = [f"  {n['niche_id']}"]
+        if "estimated_minutes" in n:
+            parts.append(f"est={n['estimated_minutes']}min")
+        if "actual_minutes" in n:
+            parts.append(f"act={n['actual_minutes']}min")
+        lines.append("  ".join(parts))
+    lines.append("")
+
+    # Alert status
+    lines.append(_c("1", "ALERT STATUS"))
+    for name, alert in d.get("alert_status", {}).items():
+        ac = {"OK": "32", "WARNING": "33", "CRITICAL": "31"}
+        color = ac.get(alert.get("status", "OK"), "0")
+        current = alert.get("current", 0)
+        warning = alert.get("warning", "-")
+        critical = alert.get("critical", "-")
+        unit = alert.get("unit", "")
+        status = _c(color, alert.get("status", "OK"))
+        lines.append(
+            f"  {name:30s} current={current}{unit}  "
+            f"warn={warning}{unit}  crit={critical}{unit}  [{status}]"
+        )
+    lines.append("")
+
+    # Recommendations
+    recs = d.get("recommendations", [])
+    lines.append(_c("1", "RECOMMENDATIONS"))
+    for i, rec in enumerate(recs, 1):
+        lines.append(f"  {i}. {rec}")
+    lines.append("")
+    lines.append(_c("1;36", "=" * 64))
+
+    return "\n".join(lines)
+
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate a quality dashboard for the 25-niche pipeline. "
+            "Reads QUALITY_METRICS.yaml, FRESHNESS_VIOLATION_LOG.yaml, "
+            "TOOL_ERROR_LOG.yaml, and SLI_DEFINITIONS.yaml. Produces a "
+            "summary report with SLI compliance, staleness hotspots, "
+            "error-prone tools, evidence quality trends, wall-clock drift, "
+            "alert status, and recommendations."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""\
+Examples:
+  %(prog)s                                   Dashboard to stdout (YAML)
+  %(prog)s --format json                     Dashboard as JSON
+  %(prog)s --format text                     Human-readable text output
+  %(prog)s --output /tmp/dashboard.yaml       Write to file
+  %(prog)s --since N-003                     Incremental from N-003 onward
+  %(prog)s --dry-run                         Validate inputs only
+
+Exit codes:
+  0  SUCCESS           All checks pass, no critical alerts
+  1  BLOCKED           (CRITICAL_ALERTS — one or more alerts above critical thresholds)
+  2  WARNING           Degraded data sources (missing/corrupted files)
+  3  INTERNAL_ERROR    Script bug or missing dependency
+  4  INVALID_INPUT     Invalid arguments
+""",
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        metavar="FILE",
+        help="Write dashboard to FILE instead of stdout",
+    )
+    parser.add_argument(
+        "--format",
+        type=str,
+        default="yaml",
+        choices=["yaml", "json", "text"],
+        help="Output format (default: yaml)",
+    )
+    parser.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        metavar="NICHE_ID",
+        help="Only include data from this NICHE_ID onward (e.g., N-003)",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Validate inputs and report what would be generated, then exit 0",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress human-readable log output to stderr",
+    )
+    parser.add_argument(
+        "--agent-mode",
+        action="store_true",
+        help="Agent-optimized output: compact JSON, no log timestamps, agent_mode: true in result",
+    )
+    return parser
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(sys.argv[1:])
+
+    output_file = args.output
+    fmt = args.format
+    since = args.since
+    dry_run = args.dry_run
+
+    # Wire --quiet / --agent-mode flags (Blocker #1 fix from 8-lens re-audit)
+    if args.agent_mode:
+        set_agent_mode(True)
+    elif args.quiet:
+        set_quiet_mode(True)
+
+    # Validate --since format if provided
+    if since is not None:
+        if not re.match(r'^(N-\d{3}|CAL-[AB])$', since, re.IGNORECASE):
+            emit_log("ERROR", f"Invalid --since NICHE_ID format: '{since}'. Expected N-001..N-025 or CAL-A/CAL-B.")
+            emit_result(ExitCode.INVALID_INPUT, {
+                "error": f"Invalid NICHE_ID format: '{since}'",
+                "valid_format": "N-001..N-025, CAL-A, CAL-B",
+                "verdict": "INVALID_INPUT",
+            })
+
+    since_upper = since.upper() if since else None
+
+    # ── Load data sources ──
+    emit_log("INFO", "Loading data sources...")
+    ds = DataSources(since=since_upper)
+    ds.load_all()
+
+    if ds.errors:
+        for err in ds.errors:
+            emit_log("ERROR", err)
+
+    if ds.warnings:
+        for warn in ds.warnings:
+            emit_log("WARNING", warn)
+
+    # ── Dry-run: report what would be generated ──
+    if dry_run:
+        emit_log("INFO", "DRY-RUN mode: no dashboard generated")
+        emit_log("INFO", f"Data sources loaded: quality_metrics={'ok' if ds.quality_metrics else 'MISSING'}, "
+                         f"freshness_violations={'ok' if ds.freshness_violations else 'empty'}, "
+                         f"tool_errors={'ok' if ds.tool_errors else 'empty'}, "
+                         f"sli_definitions={'ok' if ds.sli_definitions else 'MISSING'}")
+        if since_upper:
+            emit_log("INFO", f"Filtering data since: {since_upper}")
+        emit_log("INFO", "All inputs validated. Would generate full dashboard.")
+        metadata = {"dry_run": True, "data_sources_valid": not ds.has_degraded_source, "verdict": "DRY_RUN"}
+        emit_result(ExitCode.SUCCESS, metadata)
+
+    # ── Assemble dashboard ──
+    emit_log("INFO", "Assembling dashboard...")
+    dashboard = _assemble_dashboard(ds)
+    meta = dashboard.get("_meta", {})
+
+    # ── Format output ──
+    fmt_map = {"yaml": _format_yaml, "json": _format_json, "text": _format_text}
+    formatter = fmt_map.get(fmt, _format_yaml)
+    output_str = formatter(dashboard)
+
+    # ── Write dashboard to output file ──
+    if output_file is None:
+        output_file = str(find_quality_metrics().parent / DASHBOARD_LATEST)
+
+    out_path = Path(output_file)
+    try:
+        out_path.write_text(output_str)
+    except OSError as e:
+        emit_log("ERROR", "Failed to write output file %s: %s" % (out_path, e))
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Write failed: %s" % e,
+            "output_file": str(out_path),
+            "verdict": "WRITE_FAILED",
+        })
+
+    emit_log("INFO", "Dashboard written to %s" % out_path.resolve())
+
+    # ── Determine exit code ──
+    if meta.get("has_critical_alerts", False):
+        exit_code = ExitCode.BLOCKED  # 1 = CRITICAL_ALERTS
+    elif meta.get("has_degraded_source", False):
+        exit_code = ExitCode.WARNING  # 2 = WARNING
+    else:
+        exit_code = ExitCode.SUCCESS  # 0 = SUCCESS
+
+    # ── Emit JSON result to stdout (machine-parseable) ──
+    emit_result(exit_code, {
+        "verdict": "GENERATED",
+        "format": fmt,
+        "output_file": str(out_path),
+        "total_niches_completed": dashboard["dashboard"]["summary"]["total_niches_completed"],
+        "has_critical_alerts": meta.get("has_critical_alerts", False),
+        "has_degraded_source": meta.get("has_degraded_source", False),
+    })
+
+
+if __name__ == "__main__":
+    main()

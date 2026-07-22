@@ -1,0 +1,45 @@
+# QUALITY_METRICS.yaml — Aggregated quality metrics across all niches
+# Updated after each niche completion
+last_updated: "2026-07-23"
+
+per_data_type_staleness:
+  # Populated per data type: {staleness_violations: N, total_sources: N, staleness_rate: 0.0}
+  competitor_pricing: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  competitor_positioning: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  reviews_voc: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  news_intent: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  job_postings: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  market_sizing: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  technographics: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  company_registry: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  seo_keyword: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  funding_financial: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+  hiring_signals: {staleness_violations: 0, total_sources: 0, staleness_rate: 0.0}
+
+per_tool_errors:
+  # Populated per tool: {total_errors: N, error_rate: 0.0, last_error: null}
+  firecrawl: {total_errors: 0, error_rate: 0.0, last_error: null}
+  dataforseo: {total_errors: 0, error_rate: 0.0, last_error: null}
+  openregistry_mcp: {total_errors: 0, error_rate: 0.0, last_error: null}
+  reddit_research_mcp: {total_errors: 0, error_rate: 0.0, last_error: null}
+  context7_mcp: {total_errors: 0, error_rate: 0.0, last_error: null}
+  gdelt_api: {total_errors: 0, error_rate: 0.0, last_error: null}
+  eurostat_api: {total_errors: 0, error_rate: 0.0, last_error: null}
+  oecd_api: {total_errors: 0, error_rate: 0.0, last_error: null}
+  public_ats_api: {total_errors: 0, error_rate: 0.0, last_error: null}
+
+per_niche_evidence:
+  # Per niche: {grade_P: N, grade_E: N, grade_H: N, grade_S: N, evidence_quality: 0.0}
+  # Populated after each canvas finalization
+
+per_niche_wall_clock:
+  # Per niche: {estimated_minutes: N, actual_minutes: N, timeout_triggered: false}
+  # Populated after each niche completion
+
+cross_niche_summary:
+  total_niches_completed: 0
+  total_niches_high_uncertainty: 0
+  total_schema_violations: 0
+  total_freshness_violations: 0
+  aggregate_evidence_quality: 0.0
+  aggregate_staleness_rate: 0.0

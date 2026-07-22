@@ -1,0 +1,388 @@
+#!/usr/bin/env python3
+"""clean-raw-fetches — Remove raw fetched content older than N days.
+
+Implements the 30-day data retention policy (IMPLEMENTATION-SPEC.md Section 9.4)
+for .firecrawl/ and .dataforseo/ directories.
+
+Google SRE pattern: production operations as software engineering.
+Idempotent by design. Explicit error boundaries. Observable outputs.
+
+Usage:
+    ./clean-raw-fetches [--older-than DAYS] [--dry-run]
+
+Exit codes:
+    0   CLEANED        All files processed successfully
+    2   WARNING        Non-blocking issue (e.g., directories missing)
+    3   INTERNAL_ERROR Critical failure during cleaning (file errors), script bug, or missing dependency
+    4   INVALID_INPUT  Invalid arguments
+"""
+
+import sys
+import os
+import argparse
+from pathlib import Path
+from datetime import datetime, timedelta, timezone
+import subprocess
+from typing import Dict, Any, List, Tuple
+
+# ── Ensure lib/pipeline_ops.py is importable ──────────────────────────────────
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.pipeline_ops import (
+    emit_result, emit_log, ExitCode, now_utc, format_date,
+    repo_relative_path, set_quiet_mode, set_agent_mode,
+    find_cache_manifest, load_yaml_safe, parse_iso_date,
+)
+
+# ── Retention policy constants ────────────────────────────────────────────────
+DEFAULT_RETENTION_DAYS = 30
+MIN_RETENTION_DAYS = 7
+
+# ── Script directory (used by path resolution below) ─────────────────────────
+_SCRIPT_DIR = Path(__file__).resolve().parent
+
+# ── Path resolution ────────────────────────────────────────────────────────────
+# Script at: niche-program/research/_pipelines/clean-raw-fetches
+# Repo root (where .firecrawl/ and .dataforseo/ live) is 4 levels up:
+#   _pipelines/ -> research/ -> niche-program/ -> repo root
+#
+# Use git rev-parse as primary method (resilient to script moves and worktrees).
+# Fall back to relative traversal if git is unavailable.
+try:
+    _REPO_ROOT = Path(
+        subprocess.run(
+            ["git", "-C", str(_SCRIPT_DIR), "rev-parse", "--show-toplevel"],
+            capture_output=True, text=True, check=True,
+        ).stdout.strip()
+    )
+except (subprocess.CalledProcessError, FileNotFoundError):
+    _REPO_ROOT = _SCRIPT_DIR.parent.parent.parent
+_FIRECRAWL_DIR = _REPO_ROOT / ".firecrawl"
+_DATAFORSEO_DIR = _REPO_ROOT / ".dataforseo"
+
+# Protected path fragments — any path containing a protected fragment will NOT
+# be cleaned. This double-protects structured data and pipeline infrastructure.
+_PROTECTED_FRAGMENTS: List[str] = [
+    "niche-program/research",
+    "/_program/",
+    "/_pipelines/",
+    "/lib/",
+]
+
+
+# ── Safety helpers ─────────────────────────────────────────────────────────────
+
+def _is_protected_path(path: Path) -> Tuple[bool, str]:
+    """Check if a path is inside a protected directory.
+
+    Resolves symlinks first, then checks against protected fragments and
+    repo-root boundary (preventing symlink-traversal escapes).
+
+    Returns (is_protected: bool, reason: str).
+    """
+    resolved = path.resolve()
+    resolved_str = str(resolved)
+    for fragment in _PROTECTED_FRAGMENTS:
+        if fragment in resolved_str:
+            return True, f"Path contains protected fragment '{fragment}'"
+    # Verify resolved path is within repo root (catches symlink escape)
+    try:
+        resolved.relative_to(_REPO_ROOT.resolve())
+    except ValueError:
+        return True, f"Path resolves outside repo root: {resolved}"
+    return False, ""
+
+
+def _is_valid_raw_data_dir(directory: Path) -> bool:
+    """Verify the directory is a recognised raw-data directory by name."""
+    name = directory.name
+    return name in (".firecrawl", ".dataforseo")
+
+
+def _is_beneath_repo(path: Path) -> bool:
+    """Verify path resolves to a location beneath the repo root."""
+    try:
+        path.resolve().relative_to(_REPO_ROOT.resolve())
+        return True
+    except ValueError:
+        return False
+
+
+# ── Core cleaning logic ────────────────────────────────────────────────────────
+
+def _clean_directory(
+    directory: Path,
+    cutoff_dt: datetime,
+    dry_run: bool,
+) -> Dict[str, Any]:
+    """Walk a directory tree and remove files older than *cutoff_dt*.
+
+    Returns dict with keys: *files_removed*, *bytes_freed*, *errors*.
+    """
+    result: Dict[str, Any] = {"files_removed": 0, "bytes_freed": 0, "errors": []}
+
+    if not directory.exists():
+        emit_log("WARNING", f"Directory does not exist, skipping: {directory}")
+        return result
+    if not directory.is_dir():
+        emit_log("WARNING", f"Path is not a directory, skipping: {directory}")
+        return result
+
+    # ALWAYS verify resolved path is within repo root (symlink-traversal protection)
+    if not _is_beneath_repo(directory):
+        emit_log("ERROR", f"Refusing to clean path outside repo: {directory}")
+        result["errors"].append(f"Outside repo root: {directory}")
+        return result
+
+    # Double-check protected paths (prevents walking into pipeline infrastructure)
+    if not _is_valid_raw_data_dir(directory):
+        protected, reason = _is_protected_path(directory)
+        if protected:
+            emit_log("ERROR", f"Refusing to clean protected path: {directory} — {reason}")
+            result["errors"].append(f"Protected directory: {directory}")
+            return result
+        emit_log("WARNING", f"Skipping non-raw-data directory: {directory}")
+        return result
+
+    emit_log(
+        "INFO",
+        f"Cleaning {directory.name} (cutoff: {format_date(cutoff_dt)}, "
+        f"dry_run={'yes' if dry_run else 'no'})",
+    )
+
+    # ── Cross-ref CACHE_MANIFEST.yaml (fix #51) ──────────────────────────
+    # Load cache manifest once. If the raw file's mtime is older than a
+    # cache entry's fetch_date, log a warning — this indicates the structured
+    # data claims a newer fetch date than the raw source file's mtime.
+    _cache_manifest_entries: list[tuple[str, str]] = []
+    _manifest_path = find_cache_manifest()
+    if _manifest_path.exists():
+        try:
+            _manifest_data = load_yaml_safe(_manifest_path)
+            if _manifest_data and isinstance(_manifest_data, dict):
+                _entries = _manifest_data.get("entries", {})
+                if isinstance(_entries, dict):
+                    for _url_hash, _entry in _entries.items():
+                        if isinstance(_entry, dict):
+                            _sf = _entry.get("structured_file", "")
+                            _fd = _entry.get("fetch_date", "")
+                            if _sf and _fd:
+                                _cache_manifest_entries.append((_sf, _fd))
+        except (ValueError, OSError, TypeError):
+            emit_log("WARNING", "Could not parse CACHE_MANIFEST.yaml for consistency check")
+
+    # Walk bottom-up so we can remove empty directories after their contents
+    for root, dirs, files in os.walk(str(directory), topdown=False, followlinks=False):
+        root_path = Path(root)
+
+        # Safety re-check at every level
+        protected, _ = _is_protected_path(root_path)
+        if protected:
+            emit_log("WARNING", f"Skipping protected subdirectory: {root_path}")
+            continue
+
+        for filename in files:
+            file_path = root_path / filename
+
+            try:
+                mtime = os.path.getmtime(file_path)
+                file_dt = datetime.fromtimestamp(mtime, tz=timezone.utc)
+
+                # Consistency check: does cache manifest have entries newer than raw mtime?
+                if file_dt < cutoff_dt and _cache_manifest_entries:
+                    for _sf, _fd in _cache_manifest_entries:
+                        try:
+                            _cache_fetch_dt = parse_iso_date(_fd)
+                            if _cache_fetch_dt and file_dt < _cache_fetch_dt:
+                                # Only surface the first inconsistency found per file
+                                emit_log(
+                                    "WARNING",
+                                    f"Cache inconsistency: {file_path} mtime "
+                                    f"({format_date(file_dt)}) is older than "
+                                    f"cache entry {_sf} fetch_date ({_fd}). "
+                                    f"Raw data may be stale relative to structured data.",
+                                )
+                                break
+                        except ValueError:
+                            continue
+
+                if file_dt < cutoff_dt:
+                    file_size = file_path.stat().st_size
+                    age_days = (now_utc() - file_dt).days
+
+                    if dry_run:
+                        emit_log(
+                            "INFO",
+                            f"[DRY-RUN] Would remove: {file_path} "
+                            f"({file_size} bytes, age: {age_days}d)",
+                        )
+                    else:
+                        file_path.unlink()
+                        emit_log(
+                            "INFO",
+                            f"Removed: {file_path} "
+                            f"({file_size} bytes, age: {age_days}d)",
+                        )
+
+                    result["files_removed"] += 1
+                    result["bytes_freed"] += file_size
+
+            except OSError as e:
+                msg = f"Error processing {file_path}: {e}"
+                result["errors"].append(msg)
+                emit_log("ERROR", msg)
+
+        # Remove empty subdirectories (bottom-up means children are already gone).
+        # NEVER remove the root directory (.firecrawl/ or .dataforseo/ itself).
+        if not dry_run and root_path != directory:
+            try:
+                if not any(root_path.iterdir()):
+                    root_path.rmdir()
+                    emit_log("INFO", f"Removed empty directory: {root_path}")
+            except OSError:
+                pass  # Directory not empty or permission denied — skip
+
+    return result
+
+
+# ── Argument parsing ──────────────────────────────────────────────────────────
+
+def _build_parser() -> argparse.ArgumentParser:
+    """Build the argument parser (separated for testability)."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Remove raw fetched content older than N days from .firecrawl/ and "
+            ".dataforseo/ directories. Implements the 30-day data retention policy."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""\
+Examples:
+  %(prog)s                              Remove files older than 30 days (default)
+  %(prog)s --older-than 14              Remove files older than 14 days
+  %(prog)s --dry-run                    Preview what would be removed
+  %(prog)s --older-than 7 --dry-run     Preview files older than 7 days
+
+Safety:
+  --older-than must be >= {MIN_RETENTION_DAYS} days (prevents accidental deletion of fresh data).
+  Protected directories are NEVER cleaned: research/, _program/, _pipelines/, lib/.
+
+Exit codes:
+  0  CLEANED        All files processed successfully
+  1  ERROR          Critical failure during cleaning
+  2  WARNING        One or more data directories are missing (no removals)
+  3  INTERNAL_ERROR Script bug or missing dependency
+  4  INVALID_INPUT  Invalid arguments
+
+Directories examined:
+  {_FIRECRAWL_DIR}
+  {_DATAFORSEO_DIR}
+""",
+    )
+    parser.add_argument(
+        "--older-than",
+        type=int,
+        default=DEFAULT_RETENTION_DAYS,
+        metavar="DAYS",
+        help=f"Remove files older than this many days (default: {DEFAULT_RETENTION_DAYS}, minimum: {MIN_RETENTION_DAYS})",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List files that would be removed without actually deleting anything",
+    )
+    parser.add_argument(
+        "--quiet",
+        action="store_true",
+        default=False,
+        help="Suppress all stderr log output (machine mode)",
+    )
+    parser.add_argument(
+        "--agent-mode",
+        action="store_true",
+        default=False,
+        help="Alias for --quiet; also adds agent_mode: true to JSON output",
+    )
+    return parser
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    # ── Extract --quiet / --agent-mode (consistent with other scripts) ──
+    raw_args = sys.argv[1:]
+    quiet_flag = "--quiet" in raw_args
+    if quiet_flag:
+        raw_args.remove("--quiet")
+    agent_flag = "--agent-mode" in raw_args
+    if agent_flag:
+        raw_args.remove("--agent-mode")
+    if agent_flag:
+        set_agent_mode(True)
+    elif quiet_flag:
+        set_quiet_mode(True)
+
+    parser = _build_parser()
+    args = parser.parse_args(raw_args)
+
+    older_than = args.older_than
+    dry_run = args.dry_run
+
+    # ── Validate --older-than (safety: minimum retention) ──
+    if older_than < MIN_RETENTION_DAYS:
+        emit_log("ERROR", f"--older-than must be at least {MIN_RETENTION_DAYS} days (got {older_than})")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": f"Minimum retention is {MIN_RETENTION_DAYS} days. Got: {older_than}.",
+            "usage": "clean-raw-fetches [--older-than DAYS] [--dry-run]",
+        })
+
+    cutoff_dt = now_utc() - timedelta(days=older_than)
+    cutoff_date = format_date(cutoff_dt)
+
+    emit_log("INFO", f"Starting cleanup: files older than {older_than} days (cutoff: {cutoff_date})")
+    if dry_run:
+        emit_log("INFO", "DRY-RUN mode: no files will be deleted")
+
+    # ── Clean .firecrawl/ ──
+    fc_result = _clean_directory(_FIRECRAWL_DIR, cutoff_dt, dry_run)
+
+    # ── Clean .dataforseo/ ──
+    df_result = _clean_directory(_DATAFORSEO_DIR, cutoff_dt, dry_run)
+
+    # ── Aggregate ──
+    all_errors: List[str] = fc_result["errors"] + df_result["errors"]
+    total_files = fc_result["files_removed"] + df_result["files_removed"]
+    total_bytes = fc_result["bytes_freed"] + df_result["bytes_freed"]
+
+    dirs_missing = 0
+    if not _FIRECRAWL_DIR.exists():
+        dirs_missing += 1
+    if not _DATAFORSEO_DIR.exists():
+        dirs_missing += 1
+
+    # ── Determine verdict and exit code ──
+    if all_errors:
+        verdict = "CLEANED_WITH_ERRORS" if total_files > 0 else "ERROR"
+        exit_code = ExitCode.INTERNAL_ERROR
+    elif dirs_missing > 0 and total_files == 0 and not all_errors:
+        # Both directories missing AND nothing cleaned — purely a warning
+        verdict = "EMPTY"
+        exit_code = ExitCode.WARNING
+    else:
+        verdict = "CLEANED"
+        exit_code = ExitCode.SUCCESS
+
+    emit_result(exit_code, {
+        "verdict": verdict,
+        "older_than_days": older_than,
+        "cutoff_date": cutoff_date,
+        "firecrawl_files_removed": fc_result["files_removed"],
+        "firecrawl_bytes_freed": fc_result["bytes_freed"],
+        "dataforseo_files_removed": df_result["files_removed"],
+        "dataforseo_bytes_freed": df_result["bytes_freed"],
+        "total_bytes_freed": total_bytes,
+        "errors": all_errors,
+    })
+
+
+if __name__ == "__main__":
+    main()

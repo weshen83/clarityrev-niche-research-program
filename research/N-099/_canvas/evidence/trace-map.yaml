@@ -1,0 +1,32 @@
+claims:
+- claim_id: C-001
+  claim_text: Pricing is competitive
+  sources:
+  - data_type: competitor_pricing
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-099/00-test-data/source-fresh.yaml
+  - data_type: competitor_pricing
+    fetch_date: '2026-01-01'
+    fresh_until: '2026-01-15'
+    freshness_status: STALE
+    source_file: N-099/00-test-data/source-stale.yaml
+- claim_id: C-002
+  claim_text: Job growth signals strong
+  sources:
+  - data_type: job_postings
+    fetch_date: '2026-01-01'
+    fresh_until: '2026-01-15'
+    freshness_status: STALE
+    re_fetch_attempted: true
+    re_fetch_success: false
+    source_file: N-099/00-test-data/source-block.yaml
+- claim_id: C-003
+  claim_text: Hiring trends positive
+  sources:
+  - data_type: hiring_signals
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-07-30'
+    freshness_status: FRESH
+    source_file: N-099/00-test-data/source-hire-fresh.yaml

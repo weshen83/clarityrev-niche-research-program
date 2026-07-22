@@ -1,0 +1,337 @@
+# =============================================================================
+# Canvas Frontmatter Schema — YAML Schema Definition
+# Source: NICHE-METHODOLOGY.md §6.2 (binding specification)
+# =============================================================================
+#
+# This schema defines the YAML frontmatter structure for niche canvas files
+# stored at:
+#   niche-program/research/{NICHE_ID}/_canvas/frontmatter-N-XXX.yaml
+#
+# The frontmatter is the machine-readable summary of each completed niche
+# canvas. It is the canonical input for _program/LEDGER.yaml aggregation.
+#
+# Validation: Pipeline input data is validated against this schema at
+#   ingestion time. Schema violations are caught before mid-canvas processing.
+# =============================================================================
+
+schema:
+  name: "Canvas Frontmatter Schema"
+  version: "1.0"
+  source: "NICHE-METHODOLOGY.md §6.2"
+  file_pattern: "frontmatter-N-XXX.yaml"
+
+fields:
+  # ─── Niche identity ─────────────────────────────────────────────────────────
+
+  - field: niche_id
+    type: string
+    required: true
+    description: >
+      Niche identifier. Format: "N-XXX" (e.g., "N-001").
+      Must match the directory structure.
+
+  - field: niche_name
+    type: string
+    required: true
+    description: >
+      Human-readable niche name
+      (e.g., "Mid-Market B2B SaaS Revenue Operations").
+
+  - field: date
+    type: string (ISO 8601 date)
+    required: true
+    description: "Date the canvas was authored/completed. Format: YYYY-MM-DD."
+
+  - field: agent
+    type: string
+    required: true
+    description: >
+      AI model identifier used for canvas authoring
+      (e.g., "claude-opus-4-8").
+
+  # ─── Pipeline & verdict ────────────────────────────────────────────────────
+
+  - field: pipeline_depth
+    type: string
+    required: true
+    enum:
+      - STANDARD
+      - DEEP
+      - FORENSIC
+    description: >
+      Research depth applied to this niche.
+      STANDARD = Phase 1 only (fertility scoring).
+      DEEP = Phases 1-4 (complete evaluation).
+      FORENSIC = Full validation including monitoring and deep-dives.
+
+  - field: verdict
+    type: string
+    required: true
+    enum:
+      - LAUNCH_PENDING
+      - VALIDATE_FIRST
+      - CONDITIONAL
+      - NO_GO
+    description: >
+      Overall niche verdict.
+      LAUNCH_PENDING = ready to proceed to build.
+      VALIDATE_FIRST = promising but needs validation first.
+      CONDITIONAL = attractive if specific condition is met.
+      NO_GO = not viable, do not pursue.
+
+  # ─── Composite scoring ──────────────────────────────────────────────────────
+
+  - field: composite_score
+    type: number
+    required: true
+    validation: "MUST be between 0 and 10 inclusive"
+    description: >
+      Normalized composite score (post-calibration).
+      Used for cross-niche comparison in LEDGER.yaml.
+      Range: 0.0 - 10.0.
+
+  - field: composite_score_raw
+    type: number
+    required: true
+    validation: "MUST be between 0 and 10 inclusive"
+    description: >
+      Raw composite score (pre-normalization).
+      Recorded alongside normalized score for calibration transparency.
+      Range: 0.0 - 10.0.
+
+  - field: calibration_applied
+    type: boolean
+    required: true
+    description: >
+      True if normalization from the calibration protocol (§6.3, Mechanism 6)
+      has been applied to produce composite_score from composite_score_raw.
+
+  - field: scores
+    type: object
+    required: true
+    description: >
+      Four sub-scores covering the RIOS dimensions for cross-niche comparison.
+      Each score ranges from 1 to 10.
+    fields:
+      - field: structural_attractiveness
+        type: integer
+        required: true
+        validation: "MUST be between 1 and 10 inclusive"
+        description: >
+          Score for market structure, growth, and competitive dynamics.
+          Range: 1-10.
+
+      - field: warm_access
+        type: integer
+        required: true
+        validation: "MUST be between 1 and 10 inclusive"
+        description: >
+          Score for founder network access and buyer accessibility.
+          Range: 1-10.
+
+      - field: commercial_viability
+        type: integer
+        required: true
+        validation: "MUST be between 1 and 10 inclusive"
+        description: >
+          Score for pricing, revenue model, and EUR 500K path.
+          Range: 1-10.
+
+      - field: build_feasibility
+        type: integer
+        required: true
+        validation: "MUST be between 1 and 10 inclusive"
+        description: >
+          Score for technical build effort, data availability, and AI feasibility.
+          Range: 1-10.
+
+  # ─── Evidence quality ───────────────────────────────────────────────────────
+
+  - field: evidence_quality
+    type: number
+    required: true
+    description: >
+      Percentage of total claims graded at [E] (Evidenced) or higher.
+      Computed from evidence_distribution.
+      Range: 0.0 - 100.0.
+
+  - field: evidence_distribution
+    type: object
+    required: true
+    description: >
+      Count of claims by evidence grade. Used to compute evidence_quality
+      and the HIGH_UNCERTAINTY flag (>50% H+S = high_uncertainty: true).
+    fields:
+      - field: grade_P
+        type: integer
+        required: true
+        description: Number of claims graded PROVEN [P].
+      - field: grade_E
+        type: integer
+        required: true
+        description: Number of claims graded EVIDENCED [E].
+      - field: grade_H
+        type: integer
+        required: true
+        description: Number of claims graded HYPOTHESIS [H].
+      - field: grade_S
+        type: integer
+        required: true
+        description: Number of claims graded SPECULATIVE [S].
+
+  - field: freshness_score
+    type: number
+    required: true
+    description: >
+      Percentage of data sources within their freshness SLA at canvas
+      finalization. Computed by the freshness audit script (§6.4).
+      Range: 0.0 - 100.0.
+
+  # ─── Key metrics ────────────────────────────────────────────────────────────
+
+  - field: key_metrics
+    type: object
+    required: true
+    description: Key commercial metrics for portfolio-level comparison.
+    fields:
+      - field: market_size_companies
+        type: integer
+        required: true
+        description: TAM in number of addressable companies.
+      - field: market_size_revenue_eur
+        type: integer
+        required: true
+        description: TAM in EUR.
+      - field: avg_acv_eur
+        type: integer
+        required: true
+        description: Estimated average annual contract value in EUR.
+      - field: target_monthly_price_eur
+        type: integer
+        required: true
+        description: Target monthly price for the core service in EUR.
+      - field: breakeven_clients
+        type: integer
+        required: true
+        description: Number of clients needed to reach breakeven.
+
+  # ─── Credit consumption ─────────────────────────────────────────────────────
+
+  - field: credit_consumed
+    type: object
+    required: true
+    description: >
+      Actual credit/financial resources consumed for this niche evaluation.
+      Drawn from CREDIT_BUDGET.yaml at canvas finalization.
+    fields:
+      - field: firecrawl
+        type: integer
+        required: true
+        description: Firecrawl credits consumed for this niche.
+      - field: dataforseo_usd
+        type: number
+        required: true
+        description: DataForSEO USD consumed for this niche.
+
+  # ─── Quality flags ──────────────────────────────────────────────────────────
+
+  - field: open_questions
+    type: integer
+    required: true
+    description: >
+      Count of open/unresolved questions at canvas finalization.
+      Tracks how many unknowns remain for this niche.
+      Must be >= 5 per adversarial check requirement.
+
+  - field: freshness_violations
+    type: integer
+    required: true
+    description: >
+      Count of source data files found to be outside their freshness SLA
+      at canvas finalization time.
+
+  - field: schema_violations
+    type: integer
+    required: true
+    description: >
+      Count of schema validation failures detected at ingestion time
+      for this niche's structured data files.
+
+  - field: high_uncertainty
+    type: boolean
+    required: true
+    description: >
+      True if >50% of claims are graded [H] or [S].
+      When true, the canvas is scored at half weight in cross-niche
+      comparisons.
+
+# ─── Controlled enums (reference) ─────────────────────────────────────────────
+
+enums:
+  pipeline_depth:
+    values: [STANDARD, DEEP, FORENSIC]
+    description: "Research depth level applied to the niche evaluation."
+
+  verdict:
+    values: [LAUNCH_PENDING, VALIDATE_FIRST, CONDITIONAL, NO_GO]
+    description: "Overall niche verdict."
+
+# ─── Validation rules ─────────────────────────────────────────────────────────
+
+validation:
+  - rule: "composite_score must be between 0.0 and 10.0 inclusive"
+    severity: ERROR
+    condition: "composite_score < 0.0 || composite_score > 10.0"
+
+  - rule: "composite_score_raw must be between 0.0 and 10.0 inclusive"
+    severity: ERROR
+    condition: "composite_score_raw < 0.0 || composite_score_raw > 10.0"
+
+  - rule: "Each sub-score must be between 1 and 10 inclusive"
+    severity: ERROR
+    condition: >
+      scores.structural_attractiveness < 1 || scores.structural_attractiveness > 10 ||
+      scores.warm_access < 1 || scores.warm_access > 10 ||
+      scores.commercial_viability < 1 || scores.commercial_viability > 10 ||
+      scores.build_feasibility < 1 || scores.build_feasibility > 10
+
+  - rule: "evidence_quality must be between 0.0 and 100.0"
+    severity: ERROR
+    condition: "evidence_quality < 0.0 || evidence_quality > 100.0"
+
+  - rule: "freshness_score must be between 0.0 and 100.0"
+    severity: ERROR
+    condition: "freshness_score < 0.0 || freshness_score > 100.0"
+
+  - rule: "high_uncertainty must be true when >50% claims are [H] or [S]"
+    severity: ERROR
+    condition: >
+      (evidence_distribution.grade_H + evidence_distribution.grade_S) >
+      (evidence_distribution.grade_P + evidence_distribution.grade_E) &&
+      high_uncertainty === false
+
+  - rule: "open_questions must be >= 0"
+    severity: ERROR
+    condition: "open_questions < 0"
+
+  - rule: "calibration_applied implies composite_score may differ from composite_score_raw"
+    severity: INFO
+    condition: "calibration_applied === true && composite_score === composite_score_raw"
+
+  - rule: "niche_id must match N-XXX format"
+    severity: ERROR
+    condition: "!matches_pattern(niche_id, /^N-[0-9]{3}$/)"
+
+  - rule: "credit_consumed.firecrawl must be >= 0"
+    severity: ERROR
+    condition: "credit_consumed.firecrawl < 0"
+
+  - rule: "credit_consumed.dataforseo_usd must be >= 0"
+    severity: ERROR
+    condition: "credit_consumed.dataforseo_usd < 0.0"
+
+  - rule: "evidence_quality must be consistent with evidence_distribution"
+    severity: ERROR
+    condition: >
+      evidence_distribution.grade_P + evidence_distribution.grade_E === 0 &&
+      evidence_quality > 0.0

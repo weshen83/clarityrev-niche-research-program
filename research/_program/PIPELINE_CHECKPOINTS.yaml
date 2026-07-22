@@ -1,0 +1,13 @@
+waivers:
+- timestamp: '2026-07-22T18:19:24.652749+00:00'
+  niche_id: N-099
+  waiver_type: BLOCK_CLASS_OVERRIDE
+  sources:
+  - N-099/00-test-data/source-block.yaml
+  reason: --force flag
+- timestamp: '2026-07-22T18:20:31.314049+00:00'
+  niche_id: N-099
+  waiver_type: BLOCK_CLASS_OVERRIDE
+  sources:
+  - N-099/00-test-data/source-block.yaml
+  reason: --force flag

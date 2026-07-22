@@ -1,0 +1,13 @@
+results:
+- original_url: "https://example.com/jobs/engineer"
+  original_fetch_date: "2026-07-20"
+  original_content_hash: "sha256:abc123"
+  retroactive_content_hash: "sha256:def456"
+  mismatch: true
+  checked_at: "2026-07-22T18:25:00Z"
+- original_url: "https://example.com/hiring/cto"
+  original_fetch_date: "2026-07-20"
+  original_content_hash: "sha256:xyz789"
+  retroactive_content_hash: "sha256:xyz789"
+  mismatch: false
+  checked_at: "2026-07-22T18:25:00Z"

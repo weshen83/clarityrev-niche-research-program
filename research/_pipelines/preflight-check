@@ -1,0 +1,984 @@
+#!/usr/bin/env python3
+"""
+preflight-check — Script 1 of 5 for the ClarityRev 25-niche evaluation pipeline.
+
+Google SRE pattern: software engineering for operations.
+Stripe API design: contract-first. Netflix Chaos Engineering: assume failure.
+
+Determines whether a credit-consuming fetch operation should proceed.
+Three questions answered before any credit burn:
+  1. Is fresh data already cached?       -> SKIP (save credits)
+  2. Are sufficient credits available?   -> BLOCK if below threshold
+  3. Is the target host dead?            -> BLOCK if in dead-host registry
+
+Usage:
+    ./preflight-check NICHE_ID DATA_TYPE [--target-url URL] [--dry-run]
+
+Exit codes:
+    0  SUCCESS        - All checks passed (PROCEED) or fresh cache found (SKIP_CACHE_HIT)
+    1  BLOCKED        - Blocking issue (insufficient credits or dead host)
+    2  WARNING        - Non-blocking issue, proceed with caution
+    3  INTERNAL_ERROR - Script itself failed (bug, missing dep, corrupted file)
+    4  INVALID_INPUT  - Arguments or input files malformed
+"""
+
+import sys
+import re
+import glob as glob_module
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse
+
+# ── Make lib imports work ──────────────────────────────────────────────────────
+# Add _pipelines/ to sys.path so 'from lib.pipeline_ops' resolves correctly
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.pipeline_ops import (
+    yaml,
+    load_yaml_safe,
+    write_yaml_atomic,
+    emit_result,
+    emit_log,
+    ExitCode,
+    normalize_url,
+    compute_url_hash,
+    compute_content_hash,
+    parse_iso_date,
+    now_utc,
+    PROGRAM_DIR,
+    CONTROLLED_DATA_TYPES,
+    ESTIMATED_COSTS,
+    get_sla_max_age,
+    find_cache_manifest,
+    find_dead_host_registry,
+    find_credit_budget,
+    repo_relative_path,
+    set_quiet_mode,
+    set_agent_mode,
+)
+
+
+# ── Local Path Resolution ──────────────────────────────────────────────────────
+# Compute paths from the script's own location, avoiding dependency on private
+# names from the shared library (_PIPELINES_DIR, _RESEARCH_DIR).
+
+_SCRIPT_DIR = Path(__file__).resolve().parent          # _pipelines/
+RESEARCH_DIR = _SCRIPT_DIR.parent                       # research/
+
+
+# ── Constants ──────────────────────────────────────────────────────────────────
+
+SCRIPT_NAME = "preflight-check"
+
+# Primary tool hostnames — NEVER auto-blocked (require manual confirmation)
+PRIMARY_TOOL_HOSTS = frozenset({
+    "firecrawl.dev",
+    "api.firecrawl.dev",
+    "www.firecrawl.dev",
+    "firecrawl.com",
+    "api.firecrawl.com",
+    "www.firecrawl.com",
+    "dataforseo.com",
+    "api.dataforseo.com",
+    "www.dataforseo.com",
+})
+
+# Data types typically involved in Phase 2 of the pipeline (for GATE-1->2 threshold)
+PHASE_2_DATA_TYPES = frozenset({
+    "competitor-profile",
+    "review-corpus",
+    "market-sizing",
+    "buyer-language",
+    "technographic-profile",
+})
+
+# Thresholds (from DATA-OPERATIONS-ARCHITECTURE.md)
+LOW_CREDIT_WARNING = 2000
+GATE_THRESHOLD_WARNING = 5000
+DEFAULT_ESTIMATED_CREDITS = 5
+
+
+# ── Help ───────────────────────────────────────────────────────────────────────
+
+def print_help() -> None:
+    """Print help message and exit with code 0."""
+    print(f"""\
+{SCRIPT_NAME} - ClarityRev Niche Pipeline Preflight Check
+========================================================
+
+USAGE
+    ./{SCRIPT_NAME} NICHE_ID DATA_TYPE [--target-url URL] [--dry-run]
+
+DESCRIPTION
+    Before any credit-consuming fetch operation, answers three questions:
+
+    1. IS FRESH DATA ALREADY CACHED?
+       URL-normalized content-addressed cache lookup via CACHE_MANIFEST.yaml.
+       If fresh data exists -> SKIP (saves credits).
+       If data is stale -> PROCEED (re-fetch required).
+
+    2. ARE SUFFICIENT CREDITS AVAILABLE?
+       Checked against CREDIT_BUDGET.yaml remaining balance.
+       Below 2000 -> WARNING.  Below estimated cost -> BLOCKED.
+       Below 5000 AND Phase 2 operation -> GATE threshold warning.
+
+    3. IS THE TARGET HOST DEAD?
+       Checked against DEAD_HOST_REGISTRY.yaml blocked hosts.
+       Primary tools (firecrawl.dev, dataforseo.com) are NEVER auto-blocked.
+
+ARGUMENTS
+    NICHE_ID           Niche identifier (N-001 through N-025, or CAL-A, CAL-B)
+    DATA_TYPE          Data type from controlled vocabulary
+                       (e.g. competitor-pricing, review-corpus, market-sizing)
+    --target-url URL   URL being fetched (required for URL-normalized cache
+                       lookup and dead-host check). If omitted, falls back to
+                       legacy file-pattern cache check and skips dead-host check.
+    --dry-run          Validate inputs and report what WOULD happen. Do NOT
+                       mutate any state (no writes to manifest, no file creation).
+                       Exit 0.
+
+EXIT CODES
+    0  SUCCESS        - All checks passed (proceed) OR fresh cache found (skip)
+    1  BLOCKED        - Blocking issue (insufficient credits or dead host)
+    2  WARNING        - Non-blocking issue (low credits etc.), proceed cautiously
+    3  INTERNAL_ERROR - Script itself failed (bug, missing file, corrupted YAML)
+    4  INVALID_INPUT  - Arguments or input files malformed
+
+OUTPUT
+    JSON object (single line) to stdout.  Human-readable logs to stderr.
+    Never mix the two streams.
+
+FIELDS (stdout JSON)
+    script            Always "{SCRIPT_NAME}"
+    timestamp         ISO 8601 UTC
+    exit_code         Integer exit code
+    exit_code_name    Human-readable exit code name
+    verdict           PROCEED | SKIP_CACHE_HIT | BLOCKED_CREDITS | BLOCKED_DEAD_HOST
+    cache_status      HIT | MISS | STALE
+    credit_check      PASS | WARNING | BLOCKED | SKIPPED
+    dead_host_check   PASS | WARNING | BLOCKED | SKIPPED
+    niche_id          As provided
+    data_type         As provided
+    estimated_credits Estimated Firecrawl credits for this data type
+    credits_remaining Remaining Firecrawl credits from budget
+
+EXAMPLES
+    ./{SCRIPT_NAME} N-001 competitor-pricing --target-url https://syncgtm.com/pricing
+    ./{SCRIPT_NAME} N-001 review-corpus --dry-run
+    ./{SCRIPT_NAME} N-001 market-sizing
+""", file=sys.stderr)
+
+    sys.exit(0)
+
+
+# ── Step 1: Input Validation ───────────────────────────────────────────────────
+
+def validate_inputs(niche_id: str, data_type: str, target_url: str) -> None:
+    """
+    Validate all inputs before processing.
+
+    Checks:
+        - NICHE_ID format matches regex ^(N-d{3}|CAL-[AB])$
+        - DATA_TYPE is in controlled vocabulary
+        - target_url (if provided) has http/https scheme and valid netloc
+        - Niche directory exists
+
+    Calls emit_result(INVALID_INPUT, ...) on any failure -- never returns.
+    """
+    # NICHE_ID format
+    if not re.match(r'^(N-\d{3}|CAL-[AB])$', niche_id):
+        emit_log("ERROR",
+                 f"Invalid NICHE_ID format: '{niche_id}'."
+                 f" Expected N-001..N-025 or CAL-A/CAL-B.")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Invalid NICHE_ID format",
+            "niche_id": niche_id,
+            "expected_pattern": "N-001..N-025 or CAL-A/CAL-B",
+        })
+
+    # DATA_TYPE in controlled vocabulary
+    if data_type not in CONTROLLED_DATA_TYPES:
+        valid_sorted = sorted(CONTROLLED_DATA_TYPES)
+        emit_log("ERROR",
+                 f"Unknown DATA_TYPE: '{data_type}'."
+                 f" Valid values: {', '.join(valid_sorted)}")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": f"Unknown DATA_TYPE: '{data_type}'",
+            "valid_values": valid_sorted,
+        })
+
+    # URL validation (if provided)
+    if target_url is not None:
+        parsed = urlparse(target_url)
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            emit_log("ERROR",
+                     f"Invalid URL: '{target_url}'."
+                     " Must be http:// or https:// with a valid hostname.")
+            emit_result(ExitCode.INVALID_INPUT, {
+                "error": "Invalid URL format",
+                "target_url": target_url,
+                "details": "URL must have http or https scheme and a valid hostname.",
+            })
+
+    # Niche directory exists
+    niche_dir = RESEARCH_DIR / niche_id
+    if not niche_dir.is_dir():
+        emit_log("ERROR",
+                 f"Niche directory not found: {niche_dir}")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Niche directory not found",
+            "niche_id": niche_id,
+            "expected_path": repo_relative_path(niche_dir),
+        })
+
+    emit_log("INFO",
+             f"Input validation passed: NICHE_ID={niche_id}, DATA_TYPE={data_type}")
+
+
+# ── Step 2: Cache Check (URL-Normalized, Content-Addressed) ────────────────────
+
+def _cache_miss(reason: str, legacy_check: bool = False) -> dict:
+    """Build a cache MISS result dict."""
+    result = {
+        "cache_status": "MISS",
+        "reason": reason,
+    }
+    if legacy_check:
+        result["legacy_check"] = True
+    return result
+
+
+def check_cache(niche_id: str, data_type: str, target_url: str, dry_run: bool) -> dict:
+    """
+    Check if fresh cached data exists.
+
+    Two modes:
+        1. URL-normalized lookup (--target-url provided): SHA-256 hash of
+           normalized URL, looked up in CACHE_MANIFEST.yaml.  If entry found
+           AND the referenced data file exists AND its fetch_date is within SLA
+           -> HIT.  Otherwise MISS or STALE.
+        2. Legacy file-pattern (no --target-url): glob pattern
+           _{NICHE_ID}-{DATA_TYPE}-*.yaml under niche directory.
+
+    Returns dict with keys: cache_status, verdict, reason, and optionally
+    structured_file, fresh_until, legacy_check.
+
+    Cache HIT sets verdict="SKIP_CACHE_HIT".  All other paths set
+    verdict="PROCEED" (caller proceeds to credit/dead-host checks).
+
+    Mutations (orphaned entry removal) are suppressed when dry_run is True.
+    """
+    manifest_path = find_cache_manifest()
+
+    # Load or create in-memory manifest
+    if manifest_path.exists():
+        try:
+            raw = load_yaml_safe(manifest_path)
+            if raw is None or not isinstance(raw, dict) or "entries" not in raw:
+                emit_log("WARNING",
+                         "CACHE_MANIFEST.yaml missing top-level 'entries' key."
+                         " Resetting to empty.")
+                manifest = {"entries": {}}
+            else:
+                manifest = raw
+        except ValueError as e:
+            emit_log("ERROR",
+                     f"CACHE_MANIFEST.yaml corrupted: {e}")
+            emit_result(ExitCode.INTERNAL_ERROR, {
+                "error": "CACHE_MANIFEST.yaml corrupted",
+                "file": repo_relative_path(manifest_path),
+                "details": str(e),
+            })
+    else:
+        manifest = {"entries": {}}
+        emit_log("INFO",
+                 "CACHE_MANIFEST.yaml not found."
+                 " Starting with empty in-memory manifest."
+                 " A new file will be created when the first cache entry is written.")
+
+    if target_url is not None:
+        # ── URL-normalized cache lookup ──
+        url_hash = compute_url_hash(target_url)
+        entry = manifest["entries"].get(url_hash)
+
+        if entry is not None:
+            # Entry found in manifest
+            structured_file = entry.get("structured_file", "")
+            if not structured_file:
+                emit_log("WARNING",
+                         f"Cache entry for {url_hash} has no 'structured_file'."
+                         " Treating as cache miss.")
+                return _cache_miss("Corrupt cache entry: missing structured_file")
+
+            data_file_path = RESEARCH_DIR / structured_file
+
+            if data_file_path.exists():
+                # Read fetch_date from the actual data file (source of truth)
+                try:
+                    file_data = load_yaml_safe(data_file_path)
+                except ValueError:
+                    file_data = None
+
+                # Try file's fetch_date first, fall back to manifest entry
+                fetch_date_str = None
+                if file_data is not None and isinstance(file_data, dict):
+                    fetch_date_str = file_data.get("fetch_date")
+                if fetch_date_str is None:
+                    fetch_date_str = entry.get("fetch_date")
+
+                if fetch_date_str:
+                    try:
+                        fetch_date = parse_iso_date(fetch_date_str)
+                        # Normalize data type for SLA lookup (CONTROLLED_DATA_TYPES
+                        # uses hyphens e.g. competitor-pricing, FRESHNESS_SLA uses
+                        # underscores e.g. competitor_pricing)
+                        sla_data_type = data_type.replace('-', '_')
+                        max_age = get_sla_max_age(sla_data_type)
+                        fresh_until = fetch_date + timedelta(days=max_age)
+                        now = now_utc()
+
+                        if now < fresh_until:
+                            # CACHE HIT -- data is still within SLA
+                            # Verify content hash matches the manifest entry
+                            manifest_hash = entry.get("content_hash")
+                            if manifest_hash:
+                                try:
+                                    actual_hash = compute_content_hash(
+                                        data_file_path
+                                    )
+                                except (OSError, ValueError) as e:
+                                    emit_log("WARNING",
+                                             f"Failed to compute content hash"
+                                             f" for {data_file_path}: {e}")
+                                    return _cache_miss(
+                                        "Failed to verify content hash"
+                                    )
+                                if manifest_hash != actual_hash:
+                                    emit_log("WARNING",
+                                             f"Content hash mismatch for"
+                                             f" {data_file_path}. File"
+                                             f" corrupted or modified since"
+                                             f" cache entry was created."
+                                             f" Treating as STALE.")
+                                    return {
+                                        "cache_status": "STALE",
+                                        "reason":
+                                            "Content hash mismatch"
+                                            " (file corrupted or modified"
+                                            " since cache entry was created)",
+                                    }
+                            remaining_days = (fresh_until - now).days
+                            emit_log("INFO",
+                                     f"Cache HIT for {target_url}."
+                                     f" Data fresh until"
+                                     f" {fresh_until.strftime('%Y-%m-%d')}"
+                                     f" ({remaining_days} days remaining).")
+                            return {
+                                "cache_status": "HIT",
+                                "verdict": "SKIP_CACHE_HIT",
+                                "structured_file": structured_file,
+                                "fresh_until": fresh_until.isoformat(),
+                            }
+                        else:
+                            # CACHE STALE -- data expired
+                            emit_log("INFO",
+                                     f"Cache STALE for {target_url}."
+                                     f" Data expired on"
+                                     f" {fresh_until.strftime('%Y-%m-%d')}."
+                                     f" Max age: {max_age} days."
+                                     f" Re-fetch required.")
+                            return {
+                                "cache_status": "STALE",
+                                "reason":
+                                    f"Data expired on"
+                                    f" {fresh_until.strftime('%Y-%m-%d')}."
+                                    f" Max age: {max_age} days.",
+                            }
+                    except ValueError as e:
+                        emit_log("WARNING",
+                                 f"Invalid fetch_date '{fetch_date_str}'"
+                                 f" in cache entry: {e}")
+                        return _cache_miss("Invalid fetch_date in cache entry")
+                else:
+                    emit_log("WARNING",
+                             f"Cached file {data_file_path} has no fetch_date."
+                             " Treating as stale.")
+                    return {
+                        "cache_status": "STALE",
+                        "reason": "Cached file missing fetch_date field",
+                    }
+            else:
+                # ORPHANED ENTRY -- referenced file does not exist on disk
+                emit_log("WARNING",
+                         f"Orphaned cache entry for url_hash={url_hash}:"
+                         f" referenced file {data_file_path} not found."
+                         " Removing orphaned entry from manifest.")
+                if not dry_run:
+                    del manifest["entries"][url_hash]
+                    try:
+                        write_yaml_atomic(manifest, manifest_path)
+                        emit_log("INFO",
+                                 "Orphaned entry removed from CACHE_MANIFEST.yaml")
+                    except ValueError as e:
+                        emit_log("ERROR",
+                                 f"Failed to update CACHE_MANIFEST.yaml: {e}")
+                        # Non-fatal -- proceed without the cleanup
+                return _cache_miss("Cached file missing; orphaned entry removed")
+        else:
+            # No manifest entry for this URL
+            emit_log("INFO",
+                     f"Cache MISS for {target_url}: no cache entry found.")
+            return _cache_miss("No cache entry for URL")
+
+    else:
+        # ── No target-url -- legacy file-pattern fallback ──
+        emit_log("WARNING",
+                 "No --target-url provided; using legacy file-pattern cache"
+                 " check. This is less reliable (no URL normalization, no"
+                 " content-addressing). Provide --target-url for full"
+                 " URL-normalized cache lookups.")
+
+        # Match: niche-program/research/{NICHE_ID}/*/_{NICHE_ID}-{DATA_TYPE}-*.yaml
+        glob_pattern = str(
+            RESEARCH_DIR / niche_id / "*" / f"_{niche_id}-{data_type}-*.yaml"
+        )
+        matching_files = sorted(glob_module.glob(glob_pattern))
+
+        for fp_str in matching_files:
+            fp = Path(fp_str)
+            # Skip .tmp files (leftover from crashed atomic writes)
+            if fp.suffix == ".tmp":
+                continue
+            try:
+                file_data = load_yaml_safe(fp)
+                if file_data is None or not isinstance(file_data, dict):
+                    continue
+                fdate = file_data.get("fetch_date")
+                if fdate:
+                    fd = parse_iso_date(fdate)
+                    max_age = get_sla_max_age(data_type)
+                    fu = fd + timedelta(days=max_age)
+                    if now_utc() < fu:
+                        emit_log("INFO",
+                                 f"Legacy cache HIT: {fp.name}."
+                                 f" Data fresh until {fu.strftime('%Y-%m-%d')}.")
+                        return {
+                            "cache_status": "HIT",
+                            "verdict": "SKIP_CACHE_HIT",
+                            "structured_file":
+                                str(fp.relative_to(RESEARCH_DIR)),
+                            "fresh_until": fu.isoformat(),
+                            "legacy_check": True,
+                        }
+            except (ValueError, OSError) as e:
+                emit_log("WARNING",
+                         f"Error reading legacy cache file {fp_str}: {e}")
+                continue
+
+        emit_log("INFO",
+                 "Legacy cache check: no fresh cached files found.")
+        return _cache_miss(
+            "No fresh cached files found (legacy file-pattern check)",
+            legacy_check=True,
+        )
+
+
+# ── Step 3: Credit Balance Check ───────────────────────────────────────────────
+
+def check_credits(data_type: str) -> dict:
+    """
+    Check if sufficient credits are available for the operation.
+
+    Loads CREDIT_BUDGET.yaml from _program/, compares remaining balance
+    against estimated cost for the data type.
+
+    Thresholds:
+        Remaining < estimated cost -> BLOCKED (exit 1)
+        Remaining < 2000           -> WARNING (exit 2)
+        Remaining < 5000 AND Phase 2 data type -> WARNING (gate threshold)
+
+    Returns dict with keys:
+        credit_check       PASS | WARNING | BLOCKED
+        estimated_credits  int
+        credits_remaining  int
+        dataforseo_balance float
+        credit_warnings    list[str]   (only if WARNING or BLOCKED)
+        blocked_reason     str         (only if BLOCKED)
+    """
+    budget_path = find_credit_budget()
+
+    if not budget_path.exists():
+        emit_log("FATAL",
+                 "CREDIT_BUDGET.yaml not found."
+                 " Has Phase 0 been run? Expected at:"
+                 f" {budget_path}")
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "CREDIT_BUDGET.yaml not found. Has Phase 0 been run?",
+            "file": repo_relative_path(budget_path),
+        })
+
+    try:
+        budget = load_yaml_safe(budget_path)
+        if budget is None or not isinstance(budget, dict):
+            emit_log("FATAL",
+                     "CREDIT_BUDGET.yaml is empty, unreadable, or not a dict.")
+            emit_result(ExitCode.INTERNAL_ERROR, {
+                "error": "CREDIT_BUDGET.yaml is empty, unreadable, or not a dict",
+                "file": repo_relative_path(budget_path),
+            })
+    except ValueError as e:
+        emit_log("FATAL",
+                 f"CREDIT_BUDGET.yaml corrupted: {e}")
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "CREDIT_BUDGET.yaml corrupted",
+            "file": str(budget_path),
+            "details": str(e),
+        })
+
+    # Extract remaining balances
+    firecrawl_remaining = budget.get("firecrawl_remaining")
+    dataforseo_remaining = budget.get("dataforseo_remaining")
+
+    if firecrawl_remaining is None or dataforseo_remaining is None:
+        emit_log("FATAL",
+                 "CREDIT_BUDGET.yaml missing required fields:"
+                 " 'firecrawl_remaining' and 'dataforseo_remaining'.")
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "CREDIT_BUDGET.yaml missing required fields",
+            "details": (
+                "Expected top-level keys 'firecrawl_remaining'"
+                " and 'dataforseo_remaining'"
+            ),
+        })
+
+    # Look up estimated cost for this data type (conservative default: 5)
+    cost_entry = ESTIMATED_COSTS.get(data_type, {"firecrawl": DEFAULT_ESTIMATED_CREDITS, "dataforseo_usd": 0.0})
+    estimated_credits = cost_entry.get("firecrawl", DEFAULT_ESTIMATED_CREDITS)
+
+    # Build result accumulators
+    warnings: list[str] = []
+    blocked = False
+
+    # Check: below estimated cost
+    if firecrawl_remaining < estimated_credits:
+        blocked = True
+        emit_log("ERROR",
+                 f"Insufficient credits: {firecrawl_remaining} remaining,"
+                 f" {estimated_credits} required for '{data_type}'.")
+
+    # Check: low credit warning threshold
+    if firecrawl_remaining < LOW_CREDIT_WARNING:
+        warnings.append(
+            f"Credit balance ({firecrawl_remaining})"
+            f" below {LOW_CREDIT_WARNING}."
+            " Request replenishment."
+        )
+
+    # Check: Phase 2 gate threshold
+    if data_type in PHASE_2_DATA_TYPES and firecrawl_remaining < GATE_THRESHOLD_WARNING:
+        warnings.append(
+            f"Approaching GATE-1->2 threshold."
+            f" Credits remaining: {firecrawl_remaining}/{GATE_THRESHOLD_WARNING}."
+        )
+
+    # Assemble result dict
+    result: dict = {
+        "estimated_credits": estimated_credits,
+        "credits_remaining": firecrawl_remaining,
+        "dataforseo_balance": dataforseo_remaining,
+    }
+
+    if blocked:
+        result["credit_check"] = "BLOCKED"
+        result["credit_warnings"] = warnings
+        result["blocked_reason"] = (
+            f"Insufficient credits: {firecrawl_remaining} remaining,"
+            f" {estimated_credits} required."
+        )
+    elif warnings:
+        result["credit_check"] = "WARNING"
+        result["credit_warnings"] = warnings
+    else:
+        result["credit_check"] = "PASS"
+
+    return result
+
+
+# ── Step 4: Dead-Host Registry Check ──────────────────────────────────────────
+
+def _host_matches(hostname: str, entry_host: str) -> bool:
+    """Check if hostname matches an entry -- exact match or subdomain match."""
+    if hostname == entry_host:
+        return True
+    # Subdomain: e.g. "sub.example.com" matches entry "example.com"
+    if hostname.endswith("." + entry_host):
+        return True
+    return False
+
+
+def _is_primary_tool(hostname: str) -> bool:
+    """
+    Check if hostname is a primary tool (firecrawl.dev, dataforseo.com).
+
+    Matches exact hostname or any subdomain of a primary tool domain.
+    """
+    for primary in PRIMARY_TOOL_HOSTS:
+        if hostname == primary or hostname.endswith("." + primary):
+            return True
+    return False
+
+
+def check_dead_host(target_url: str) -> dict:
+    """
+    Check if the target host is in the dead-host registry.
+
+    Primary tools (firecrawl.dev, dataforseo.com) are NEVER auto-blocked.
+    If a primary tool matches the registry, return WARNING (manual review
+    required) instead of BLOCKED.
+
+    Returns dict with keys:
+        dead_host_check  PASS | WARNING | BLOCKED | SKIPPED
+        hostname         str (extracted hostname)
+        dead_host_note   str (human-readable explanation)
+    """
+    if target_url is None:
+        return {
+            "dead_host_check": "SKIPPED",
+            "dead_host_note": "No URL provided; dead-host check skipped.",
+        }
+
+    parsed = urlparse(target_url)
+    hostname = parsed.netloc.lower()
+
+    # Strip port if present: "example.com:8080" -> "example.com"
+    if ":" in hostname:
+        hostname = hostname.split(":")[0]
+
+    registry_path = find_dead_host_registry()
+
+    if not registry_path.exists():
+        # No registry file -- treated as empty (PASS)
+        return {
+            "dead_host_check": "PASS",
+            "hostname": hostname,
+            "dead_host_note": "DEAD_HOST_REGISTRY.yaml not found; registry is empty.",
+        }
+
+    try:
+        registry = load_yaml_safe(registry_path)
+        if registry is None:
+            return {
+                "dead_host_check": "PASS",
+                "hostname": hostname,
+                "dead_host_note": "DEAD_HOST_REGISTRY.yaml is empty.",
+            }
+    except ValueError as e:
+        emit_log("FATAL",
+                 f"DEAD_HOST_REGISTRY.yaml corrupted: {e}")
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "DEAD_HOST_REGISTRY.yaml corrupted",
+            "file": repo_relative_path(registry_path),
+            "details": str(e),
+        })
+
+    # Support multiple possible registry formats
+    blocked_entries: list = []
+    if isinstance(registry, list):
+        blocked_entries = registry
+    elif isinstance(registry, dict):
+        # Try common key names
+        for key in ("blocked_hosts", "hosts", "entries", "dead_hosts"):
+            val = registry.get(key, [])
+            if isinstance(val, list):
+                blocked_entries = val
+                break
+
+    now = now_utc()
+
+    for entry in blocked_entries:
+        # Each entry can be a simple string or a dict
+        if isinstance(entry, str):
+            entry_host = entry.lower()
+            blocked_until = None
+        elif isinstance(entry, dict):
+            entry_host = (entry.get("host") or entry.get("hostname") or "").lower()
+            blocked_until = entry.get("blocked_until")
+        else:
+            continue
+
+        if not entry_host:
+            continue
+
+        if _host_matches(hostname, entry_host):
+            # Check if block is time-bound and has expired
+            if blocked_until:
+                try:
+                    bu = parse_iso_date(blocked_until)
+                    if now > bu:
+                        # Block has expired; treat as not blocked
+                        continue
+                except ValueError:
+                    pass  # Unparseable date -- treat as active
+
+            # Check if this is a primary tool (NEVER auto-blocked)
+            if _is_primary_tool(hostname):
+                emit_log("WARNING",
+                         f"Host '{hostname}' matches dead-host registry but"
+                         f" is a primary tool. Manual review required.")
+                return {
+                    "dead_host_check": "WARNING",
+                    "hostname": hostname,
+                    "dead_host_note":
+                        f"Host '{hostname}' matches dead-host registry but"
+                        " is a primary tool. Manual review required.",
+                }
+
+            # BLOCKED
+            until_str = f" until {blocked_until}" if blocked_until else ""
+            emit_log("ERROR",
+                     f"Host '{hostname}' is in dead-host registry{until_str}.")
+            return {
+                "dead_host_check": "BLOCKED",
+                "hostname": hostname,
+                "dead_host_note":
+                    f"Host '{hostname}' is in dead-host registry{until_str}.",
+            }
+
+    # No match found
+    return {
+        "dead_host_check": "PASS",
+        "hostname": hostname,
+    }
+
+
+# ── Argument Extraction Helpers ────────────────────────────────────────────────
+
+def _extract_target_url(args: list) -> tuple:
+    """
+    Extract --target-url VALUE from argument list.
+
+    Returns (target_url_value, remaining_args).
+    target_url_value is None if flag not present, "" if flag present without value.
+    """
+    remaining = []
+    value = None
+    skip_next = False
+    for i, arg in enumerate(args):
+        if skip_next:
+            skip_next = False
+            continue
+        if arg == "--target-url":
+            if i + 1 < len(args) and not args[i + 1].startswith("--"):
+                value = args[i + 1]
+                skip_next = True
+            else:
+                value = ""  # Flag present but no value
+        else:
+            remaining.append(arg)
+    return value, remaining
+
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+
+def main() -> None:
+    """Entry point. Parse args, run checks, emit verdict."""
+    args = sys.argv[1:]
+
+    # ── Handle --help ──────────────────────────────────────────────────────
+    if "--help" in args or "-h" in args:
+        print_help()
+
+    # ── Extract --dry-run ──────────────────────────────────────────────────
+    dry_run = "--dry-run" in args
+    if dry_run:
+        args.remove("--dry-run")
+
+    # ── Extract --quiet / --agent-mode ─────────────────────────────────────
+    quiet_mode = "--quiet" in args
+    if quiet_mode:
+        args.remove("--quiet")
+    agent_mode = "--agent-mode" in args
+    if agent_mode:
+        args.remove("--agent-mode")
+    if agent_mode:
+        set_agent_mode(True)
+    elif quiet_mode:
+        set_quiet_mode(True)
+
+    # ── Extract --target-url ───────────────────────────────────────────────
+    target_url, remaining = _extract_target_url(args)
+    args = remaining
+
+    # Handle --target-url "" (flag provided without a value)
+    if target_url == "":
+        emit_log("WARNING",
+                 "--target-url flag provided but no URL value given."
+                 " Skipping URL-dependent checks.")
+        target_url = None
+
+    # ── Parse positional arguments ─────────────────────────────────────────
+    if len(args) < 2:
+        emit_log("ERROR",
+                 f"Usage: {SCRIPT_NAME} NICHE_ID DATA_TYPE"
+                 " [--target-url URL] [--dry-run]")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error":
+                f"Expected at least 2 positional arguments, got {len(args)}.",
+            "usage":
+                f"{SCRIPT_NAME} NICHE_ID DATA_TYPE"
+                " [--target-url URL] [--dry-run]",
+        })
+
+    niche_id = args[0]
+    data_type = args[1]
+
+    # ==========================================================================
+    # Step 1: Input Validation
+    # ==========================================================================
+    validate_inputs(niche_id, data_type, target_url)
+
+    # ==========================================================================
+    # Step 2: Cache Check
+    # ==========================================================================
+    cache_result = check_cache(niche_id, data_type, target_url, dry_run)
+    cache_status = cache_result["cache_status"]
+    cache_verdict = cache_result.get("verdict", "PROCEED")
+
+    # Cache HIT -> early exit with SKIP_CACHE_HIT (exit 0)
+    if cache_verdict == "SKIP_CACHE_HIT":
+        emit_log("INFO",
+                 "VERDICT: SKIP_CACHE_HIT -- fresh data cached."
+                 " No fetch needed.")
+        result_data = {
+            "verdict": "SKIP_CACHE_HIT",
+            "cache_status": "HIT",
+            "credit_check": "SKIPPED",
+            "dead_host_check": "SKIPPED",
+            "niche_id": niche_id,
+            "data_type": data_type,
+            "estimated_credits":
+                ESTIMATED_COSTS.get(data_type, {}).get("firecrawl", DEFAULT_ESTIMATED_CREDITS),
+            "credits_remaining": 0,
+        }
+        emit_result(ExitCode.SUCCESS, result_data)
+
+    # ==========================================================================
+    # Step 3: Credit Balance Check
+    # ==========================================================================
+    credit_result = check_credits(data_type)
+
+    # Credits BLOCKED -> early exit (exit 1)
+    if credit_result.get("credit_check") == "BLOCKED":
+        for w in credit_result.get("credit_warnings", []):
+            emit_log("WARNING", w)
+        emit_log("ERROR",
+                 "VERDICT: BLOCKED_CREDITS --"
+                 f" {credit_result.get('blocked_reason', 'Insufficient credits')}")
+        result_data = {
+            "verdict": "BLOCKED_CREDITS",
+            "cache_status": cache_status,
+            "credit_check": "BLOCKED",
+            "dead_host_check": "SKIPPED",
+            "niche_id": niche_id,
+            "data_type": data_type,
+            "estimated_credits": credit_result["estimated_credits"],
+            "credits_remaining": credit_result["credits_remaining"],
+            "blocked_reason":
+                credit_result.get("blocked_reason", "Insufficient credits"),
+            "resolution_hint":
+                "Top up firecrawl credits (see CREDIT_BUDGET.yaml)"
+                " or choose a lower-cost data type.",
+        }
+        emit_result(ExitCode.BLOCKED, result_data)
+
+    # ==========================================================================
+    # Step 4: Dead-Host Registry Check
+    # ==========================================================================
+    dead_host_result = check_dead_host(target_url)
+
+    # Dead host BLOCKED -> early exit (exit 1)
+    if dead_host_result.get("dead_host_check") == "BLOCKED":
+        emit_log("ERROR",
+                 "VERDICT: BLOCKED_DEAD_HOST --"
+                 f" {dead_host_result.get('dead_host_note', 'Target host is dead')}")
+        result_data = {
+            "verdict": "BLOCKED_DEAD_HOST",
+            "cache_status": cache_status,
+            "credit_check": credit_result.get("credit_check", "UNKNOWN"),
+            "dead_host_check": "BLOCKED",
+            "niche_id": niche_id,
+            "data_type": data_type,
+            "estimated_credits": credit_result["estimated_credits"],
+            "credits_remaining": credit_result["credits_remaining"],
+            "blocked_reason":
+                dead_host_result.get("dead_host_note", "Target host is dead"),
+            "resolution_hint":
+                "Check if the host is back online and remove"
+                " from DEAD_HOST_REGISTRY.yaml.",
+        }
+        emit_result(ExitCode.BLOCKED, result_data)
+
+    # ==========================================================================
+    # Step 5: Verdict Assembly
+    # ==========================================================================
+
+    # Collect any warning-level flags
+    warnings: list[str] = []
+    if credit_result.get("credit_check") == "WARNING":
+        warnings.extend(credit_result.get("credit_warnings", []))
+    if dead_host_result.get("dead_host_check") == "WARNING":
+        dh_note = dead_host_result.get("dead_host_note", "")
+        if dh_note:
+            warnings.append(dh_note)
+
+    if warnings:
+        exit_code = ExitCode.WARNING
+        emit_log("WARNING", "VERDICT: PROCEED (with warnings)")
+        for w in warnings:
+            emit_log("WARNING", f"  - {w}")
+    else:
+        exit_code = ExitCode.SUCCESS
+        emit_log("INFO", "VERDICT: PROCEED -- all checks passed.")
+
+    # Summary logs to stderr
+    if cache_status in ("STALE", "MISS"):
+        emit_log("INFO",
+                 f"  Cache: {cache_status}"
+                 f" ({cache_result.get('reason', '')})")
+    emit_log("INFO",
+             f"  Credits: {credit_result.get('credit_check', 'UNKNOWN')}"
+             f" ({credit_result['credits_remaining']} remaining,"
+             f" {credit_result['estimated_credits']} estimated)")
+    dh_status = dead_host_result.get("dead_host_check", "SKIPPED")
+    dh_note = dead_host_result.get("dead_host_note", "")
+    emit_log("INFO",
+             f"  Dead-host: {dh_status}"
+             + (f" ({dh_note})" if dh_note else ""))
+
+    # Build result JSON
+    result_data = {
+        "verdict": "PROCEED",
+        "cache_status": cache_status,
+        "credit_check": credit_result.get("credit_check", "UNKNOWN"),
+        "dead_host_check": dead_host_result.get("dead_host_check", "SKIPPED"),
+        "niche_id": niche_id,
+        "data_type": data_type,
+        "estimated_credits": credit_result["estimated_credits"],
+        "credits_remaining": credit_result["credits_remaining"],
+    }
+
+    if warnings:
+        result_data["warnings"] = warnings
+
+    if dry_run:
+        result_data["cache_details"] = cache_result
+        result_data["credit_details"] = credit_result
+        result_data["dead_host_details"] = dead_host_result
+        emit_log("INFO",
+                 "DRY RUN: No state was mutated. Above is what would happen.")
+
+    emit_result(exit_code, result_data)
+
+
+if __name__ == "__main__":
+    main()

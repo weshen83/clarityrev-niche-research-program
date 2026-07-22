@@ -1,0 +1,48 @@
+competitor_name: SyncGTM
+fetch_date: '2026-07-01'
+reviews:
+- cons: Could be cheaper
+  date: '2026-06-15'
+  pros: Easy to use
+  rating: 4
+  review_id: rev_001
+  reviewer_company_size: 50-200 employees
+  reviewer_role: VP Sales
+  source: g2
+  source_url: https://g2.com/syncgtm/rev1
+  title: Great tool
+  verbatim_quotes:
+  - This tool really helped our team
+- cons: ''
+  date: '2026-06-10'
+  pros: Great features
+  rating: 5
+  review_id: rev_002
+  reviewer_company_size: 200-500 employees
+  reviewer_role: Revenue Ops Manager
+  source: capterra
+  source_url: https://capterra.com/syncgtm/rev1
+  title: Excellent
+  verbatim_quotes:
+  - Best tool we have used
+sources:
+  capterra:
+    count: 7
+    url: https://capterra.com/syncgtm
+  g2:
+    count: 15
+    url: https://g2.com/syncgtm
+  reddit:
+    count: 3
+    subreddits:
+    - r/RevOps
+theme_analysis:
+  top_complaint_themes:
+  - frequency: 7
+    pct: 28
+    theme: Pricing
+  top_praise_themes:
+  - frequency: 12
+    pct: 48
+    theme: Ease of setup
+total_reviews: 25

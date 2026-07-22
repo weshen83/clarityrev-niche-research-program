@@ -1,0 +1,234 @@
+# =============================================================================
+# Market Sizing Schema — YAML Schema Definition
+# Source: DATA-OPERATIONS-ARCHITECTURE.md §5.3 (binding specification)
+# =============================================================================
+#
+# This schema defines the structure for market sizing files stored at:
+#   niche-program/research/{NICHE_ID}/03-market-sizing/
+#   {niche_id}-market-sizing-{descriptor}-v1.yaml
+#
+# Validation: Pipeline input data is validated against this schema at
+#   ingestion time. Schema violations are caught before mid-canvas processing.
+# =============================================================================
+
+schema:
+  name: "Market Sizing Schema"
+  version: "1.0"
+  source: "DATA-OPERATIONS-ARCHITECTURE.md §5.3"
+  file_pattern: "{niche_id}-market-sizing-{descriptor}-v1.yaml"
+
+fields:
+  # ─── Identification & provenance ────────────────────────────────────────────
+
+  - field: niche_id
+    type: string
+    required: true
+    description: >
+      Niche identifier matching the directory structure.
+      Format: "N-XXX" (e.g., "N-003").
+
+  - field: fetch_date
+    type: string (ISO 8601 date)
+    required: true
+    description: "Date the market sizing data was researched. Format: YYYY-MM-DD."
+
+  - field: methodology
+    type: string
+    required: true
+    enum:
+      - top-down
+      - bottom-up
+      - hybrid
+    description: >
+      Methodology used to compute the TAM.
+      top-down = macro economic data applied top-down,
+      bottom-up = company counts * average ACV,
+      hybrid = combination of both approaches.
+
+  # ─── TAM (Total Addressable Market) ─────────────────────────────────────────
+
+  - field: tam
+    type: object
+    required: true
+    description: >
+      Total Addressable Market computation for this niche.
+    fields:
+      - field: companies
+        type: integer
+        required: true
+        description: >
+          Best-estimate number of addressable companies in the niche.
+          Single point estimate (see companies_range for confidence interval).
+
+      - field: companies_range
+        type: string
+        required: true
+        description: >
+          80% confidence interval for the company estimate.
+          Format: "{lower}-{upper}" (e.g., "6,000-12,000").
+
+      - field: revenue_eur
+        type: integer
+        required: true
+        description: >
+          TAM in EUR. Computed as: companies * average ACV.
+          Integer (no decimals for EUR amounts).
+
+      - field: sources
+        type: array
+        required: true
+        description: >
+          List of data sources used for the market sizing estimate.
+          At least 2 independent sources required for [E] grade.
+        min_items: 1
+        items:
+          type: object
+          required:
+            - name
+            - url
+            - methodology
+            - year
+          fields:
+            - field: name
+              type: string
+              required: true
+              description: >
+                Name of the data source
+                (e.g., "EUROSTAT NACE J.62", "Gartner Market Guide 2025").
+
+            - field: url
+              type: string (URL)
+              required: true
+              description: URL to the source data or report.
+
+            - field: methodology
+              type: string
+              required: true
+              description: >
+                Brief description of how this source computed its estimate
+                (e.g., "Business demography by NACE code").
+
+            - field: year
+              type: integer
+              required: true
+              description: Publication year of the source data.
+
+      - field: confidence
+        type: string
+        required: true
+        enum:
+          - HIGH
+          - MEDIUM
+          - LOW
+        description: >
+          Confidence in the TAM estimate.
+          HIGH = multiple independent, current sources converging.
+          MEDIUM = at least one credible source with supporting data.
+          LOW = extrapolation from adjacent markets, few sources.
+
+  # ─── Geographic scope ───────────────────────────────────────────────────────
+
+  - field: geographic_scope
+    type: object
+    required: true
+    description: Geographic boundaries of this niche evaluation.
+    fields:
+      - field: primary
+        type: string
+        required: true
+        description: >
+          Primary geographic market for the niche.
+          ISO country code (e.g., "NL", "DE", "UK").
+
+      - field: secondary
+        type: array of strings
+        required: false
+        default: []
+        description: >
+          Secondary geographic markets. ISO country codes
+          (e.g., ["BE", "DE"]).
+
+      - field: justification
+        type: string
+        required: true
+        description: >
+          Rationale for the geographic scope selection
+          (e.g., "Founder network strongest in NL; DACH expansion via partners").
+
+  # ─── Market structure ──────────────────────────────────────────────────────
+
+  - field: concentration
+    type: string
+    required: true
+    enum:
+      - platform-dominant
+      - oligopoly
+      - fragmented
+    description: >
+      Market concentration structure.
+      platform-dominant = single platform owns >50% market share,
+      oligopoly = 3-5 players control >60% market,
+      fragmented = no player has >15% market share.
+
+  - field: growth_trajectory
+    type: string
+    required: true
+    enum:
+      - growing
+      - stable
+      - shrinking
+    description: >
+      Current growth trajectory of the niche market.
+      growing = CAGR > 5%, stable = CAGR -5% to +5%,
+      shrinking = CAGR < -5%.
+
+  - field: niche_existence_proof
+    type: array of strings
+    required: true
+    description: >
+      Evidence that this niche is a real, recognized category.
+      Examples: analyst reports, LinkedIn groups, industry events,
+      dedicated conferences, trade publications.
+    min_items: 1
+
+# ─── Controlled enums (reference) ─────────────────────────────────────────────
+
+enums:
+  methodology:
+    values: [top-down, bottom-up, hybrid]
+    description: "TAM computation methodology."
+
+  confidence:
+    values: [HIGH, MEDIUM, LOW]
+    description: "Confidence level in the market sizing estimate."
+
+  concentration:
+    values: [platform-dominant, oligopoly, fragmented]
+    description: "Market concentration structure."
+
+  growth_trajectory:
+    values: [growing, stable, shrinking]
+    description: "Market growth trajectory."
+
+# ─── Validation rules ─────────────────────────────────────────────────────────
+
+validation:
+  - rule: "At least one source is required in tam.sources"
+    severity: ERROR
+    condition: "tam.sources.length === 0"
+
+  - rule: "revenue_eur must be non-negative"
+    severity: ERROR
+    condition: "tam.revenue_eur < 0"
+
+  - rule: "companies must be non-negative"
+    severity: ERROR
+    condition: "tam.companies < 0"
+
+  - rule: "companies_range must contain a valid range string"
+    severity: WARNING
+    condition: "!matches_pattern(tam.companies_range, /^[0-9,]+-[0-9,]+$/)"
+
+  - rule: "At least one niche_existence_proof entry is required"
+    severity: ERROR
+    condition: "niche_existence_proof.length === 0"

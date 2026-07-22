@@ -1,0 +1,284 @@
+# =============================================================================
+# Review Corpus Schema — YAML Schema Definition
+# Source: DATA-OPERATIONS-ARCHITECTURE.md §5.2 (binding specification)
+# =============================================================================
+#
+# This schema defines the structure for review corpus files stored at:
+#   niche-program/research/{NICHE_ID}/04-voice-of-customer/
+#   {niche_id}-review-corpus-{name}-v1.yaml
+#
+# Validation: Pipeline input data is validated against this schema at
+#   ingestion time. Schema violations are caught before mid-canvas processing.
+# =============================================================================
+
+schema:
+  name: "Review Corpus Schema"
+  version: "1.0"
+  source: "DATA-OPERATIONS-ARCHITECTURE.md §5.2"
+  file_pattern: "{niche_id}-review-corpus-{name}-v1.yaml"
+
+fields:
+  # ─── Top-level identification ───────────────────────────────────────────────
+
+  - field: competitor_name
+    type: string
+    required: true
+    description: Name of the competitor whose reviews are collected.
+
+  - field: fetch_date
+    type: string (ISO 8601 date)
+    required: true
+    description: "Date the review data was fetched. Format: YYYY-MM-DD."
+
+  - field: total_reviews
+    type: integer
+    required: true
+    description: >
+      Total number of reviews aggregated across all sources.
+      MUST equal the sum of sources.g2.count + sources.capterra.count +
+      sources.reddit.count.
+    validation: "MUST equal sum of sources.*.count"
+
+  # ─── Sources summary ────────────────────────────────────────────────────────
+
+  - field: sources
+    type: object
+    required: true
+    description: >
+      Summary of review sources with per-platform counts and URLs.
+    fields:
+      - field: g2
+        type: object
+        required: true
+        description: G2 review source metadata.
+        fields:
+          - field: count
+            type: integer
+            required: true
+            description: Number of reviews sourced from G2.
+          - field: url
+            type: string (URL)
+            required: true
+            description: URL to the G2 reviews page for this product.
+
+      - field: capterra
+        type: object
+        required: true
+        description: Capterra review source metadata.
+        fields:
+          - field: count
+            type: integer
+            required: true
+            description: Number of reviews sourced from Capterra.
+          - field: url
+            type: string (URL)
+            required: true
+            description: URL to the Capterra reviews page for this product.
+
+      - field: reddit
+        type: object
+        required: true
+        description: Reddit review/mention source metadata.
+        fields:
+          - field: count
+            type: integer
+            required: true
+            description: Number of reviews/discussions sourced from Reddit.
+          - field: subreddits
+            type: array of strings
+            required: true
+            description: >
+              List of subreddits where reviews were found
+              (e.g., ["r/RevOps", "r/sales"]).
+
+  # ─── Individual reviews ─────────────────────────────────────────────────────
+
+  - field: reviews
+    type: array
+    required: true
+    description: >
+      Array of individual review entries. Each review captures structured
+      data including rating, reviewer context, and verbatim quotes.
+    min_items: 1
+    items:
+      type: object
+      required:
+        - review_id
+        - source
+        - source_url
+        - rating
+        - reviewer_role
+        - reviewer_company_size
+        - date
+        - title
+        - pros
+        - cons
+        - verbatim_quotes
+      fields:
+        - field: review_id
+          type: string
+          required: true
+          description: >
+            Unique identifier for this review.
+            Format: "rev_{three-digit sequential}" (e.g., "rev_001").
+
+        - field: source
+          type: string
+          required: true
+          description: Platform where this review was published (e.g., "g2", "capterra", "reddit").
+
+        - field: source_url
+          type: string (URL)
+          required: true
+          description: Direct URL to the individual review.
+
+        - field: rating
+          type: integer
+          required: true
+          validation: "MUST be between 1 and 5 inclusive"
+          description: >
+            Numerical rating (1-5 scale). 1 = worst, 5 = best.
+
+        - field: reviewer_role
+          type: string
+          required: true
+          description: >
+            Job title or role of the reviewer
+            (e.g., "VP Sales", "Revenue Operations Manager").
+
+        - field: reviewer_company_size
+          type: string
+          required: true
+          description: >
+            Company size bracket as reported by the reviewer
+            (e.g., "50-200 employees", "Enterprise (1000+) employees").
+
+        - field: date
+          type: string (ISO 8601 date)
+          required: true
+          description: "Date the review was published. Format: YYYY-MM-DD."
+
+        - field: title
+          type: string
+          required: true
+          description: Review title or headline.
+
+        - field: pros
+          type: string
+          required: true
+          description: What the reviewer liked (free text).
+
+        - field: cons
+          type: string
+          required: false
+          default: ""
+          description: >
+            What the reviewer disliked (free text). May be empty for
+            overwhelmingly positive reviews.
+
+        - field: verbatim_quotes
+          type: array of strings
+          required: true
+          description: >
+            Direct quotations from the review. These are used for buyer
+            language extraction and VOC analysis.
+          min_items: 1
+
+  # ─── Thematic analysis ──────────────────────────────────────────────────────
+
+  - field: theme_analysis
+    type: object
+    required: true
+    description: >
+      Aggregated thematic analysis derived from review content,
+      summarizing praise and complaint patterns.
+    fields:
+      - field: top_praise_themes
+        type: array
+        required: true
+        description: >
+          Most frequently mentioned positive themes across all reviews.
+          Sorted by frequency descending.
+        items:
+          type: object
+          required:
+            - theme
+            - frequency
+            - pct
+          fields:
+            - field: theme
+              type: string
+              required: true
+              description: Name of the praise theme (e.g., "Ease of setup").
+            - field: frequency
+              type: integer
+              required: true
+              description: Number of reviews mentioning this theme.
+            - field: pct
+              type: number
+              required: true
+              description: >
+                Percentage of total reviews mentioning this theme
+                (e.g., 48 for 48%).
+
+      - field: top_complaint_themes
+        type: array
+        required: true
+        description: >
+          Most frequently mentioned negative themes across all reviews.
+          Sorted by frequency descending.
+        items:
+          type: object
+          required:
+            - theme
+            - frequency
+            - pct
+          fields:
+            - field: theme
+              type: string
+              required: true
+              description: Name of the complaint theme (e.g., "Pricing at scale").
+            - field: frequency
+              type: integer
+              required: true
+              description: Number of reviews mentioning this theme.
+            - field: pct
+              type: number
+              required: true
+              description: >
+                Percentage of total reviews mentioning this theme
+                (e.g., 28 for 28%).
+
+# ─── Controlled enums (reference) ─────────────────────────────────────────────
+
+enums:
+  source:
+    values: [g2, capterra, reddit]
+    description: "Platform where reviews were collected from."
+
+# ─── Validation rules ─────────────────────────────────────────────────────────
+
+validation:
+  - rule: "total_reviews must equal sum of sources.g2.count + sources.capterra.count + sources.reddit.count"
+    severity: ERROR
+    condition: "total_reviews !== (sources.g2.count + sources.capterra.count + sources.reddit.count)"
+
+  - rule: "rating must be integer between 1 and 5 inclusive"
+    severity: ERROR
+    condition: "rating < 1 || rating > 5 || !Number.isInteger(rating)"
+
+  - rule: "At least one review entry is required"
+    severity: ERROR
+    condition: "reviews.length === 0"
+
+  - rule: "each review must have at least one verbatim quote"
+    severity: WARNING
+    condition: "verbatim_quotes.length === 0"
+
+  - rule: "theme percentages should be reasonable (0-100)"
+    severity: WARNING
+    condition: "pct < 0 || pct > 100"
+
+  - rule: "review_id must be unique across all reviews"
+    severity: ERROR
+    condition: "has_duplicates(reviews.map(r => r.review_id))"

@@ -1,0 +1,34 @@
+agent: claude-opus-4-8
+calibration_applied: true
+composite_score: 7.5
+composite_score_raw: 7.8
+credit_consumed:
+  dataforseo_usd: 0.5
+  firecrawl: 150
+date: '2026-07-10'
+evidence_distribution:
+  grade_E: 12
+  grade_H: 4
+  grade_P: 5
+  grade_S: 2
+evidence_quality: 72.0
+freshness_score: 95.0
+freshness_violations: 0
+high_uncertainty: false
+key_metrics:
+  avg_acv_eur: 12000
+  breakeven_clients: 10
+  market_size_companies: 8000
+  market_size_revenue_eur: 96000000
+  target_monthly_price_eur: 2500
+niche_id: N-001
+niche_name: Mid-Market B2B SaaS RevOps
+open_questions: 5
+pipeline_depth: DEEP
+schema_violations: 0
+scores:
+  build_feasibility: 9
+  commercial_viability: 8
+  structural_attractiveness: 7
+  warm_access: 6
+verdict: VALIDATE_FIRST

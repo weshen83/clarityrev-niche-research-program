@@ -1,0 +1,349 @@
+# =============================================================================
+# Competitor Profile Schema — YAML Schema Definition
+# Source: DATA-OPERATIONS-ARCHITECTURE.md §5.1 (binding specification)
+# =============================================================================
+#
+# This schema defines the structure for competitor profile files stored at:
+#   niche-program/research/{NICHE_ID}/02-competitor-intel/
+#   {niche_id}-competitor-profile-{name}-v1.yaml
+#
+# Validation: Pipeline input data is validated against this schema at
+#   ingestion time. Schema violations are caught before mid-canvas processing.
+# =============================================================================
+
+schema:
+  name: "Competitor Profile Schema"
+  version: "1.0"
+  source: "DATA-OPERATIONS-ARCHITECTURE.md §5.1"
+  file_pattern: "{niche_id}-competitor-profile-{name}-v1.yaml"
+
+fields:
+  # ─── Top-level identification ───────────────────────────────────────────────
+
+  - field: competitor_id
+    type: string
+    required: true
+    description: >
+      Unique identifier for this competitor profile.
+      Format: comp_{name}_{version}  (e.g., comp_syncgtm_v1)
+
+  - field: name
+    type: string
+    required: true
+    description: Company name (e.g., "SyncGTM")
+
+  - field: url
+    type: string (URL)
+    required: true
+    description: Homepage URL of the competitor (e.g., "https://syncgtm.com")
+
+  # ─── Freshness & provenance ─────────────────────────────────────────────────
+
+  - field: fetch_date
+    type: string (ISO 8601 date)
+    required: true
+    description: "Date the competitor data was fetched. Format: YYYY-MM-DD."
+
+  - field: fetch_method
+    type: string
+    required: true
+    enum:
+      - firecrawl_search
+      - firecrawl_scrape
+      - dataforseo
+      - openregistry
+      - manual
+    description: Tool used to fetch the primary competitor data.
+
+  - field: freshness_sla
+    type: string (duration)
+    required: true
+    description: >
+      Maximum age allowed per the freshness SLA table.
+      Format: "{number}d" (e.g., "90d", "180d").
+
+  - field: fresh_until
+    type: string (ISO 8601 date)
+    required: true
+    description: >
+      Date after which the data is considered stale.
+      Computed as: fetch_date + freshness_sla. Format: YYYY-MM-DD.
+
+  - field: freshness_status
+    type: string
+    required: true
+    enum:
+      - FRESH
+      - STALE
+      - EXPIRED
+    description: >
+      Current freshness state.
+      FRESH = within SLA, STALE = past SLA but usable,
+      EXPIRED = past SLA and requires re-fetch before use.
+
+  # ─── Cross-niche sharing & sources ──────────────────────────────────────────
+
+  - field: niches_where_relevant
+    type: array of strings
+    required: false
+    default: []
+    description: >
+      List of niche IDs (e.g., "niche-003", "niche-007") where this competitor
+      profile is also relevant. Enables cross-niche data sharing.
+
+  - field: source_urls
+    type: array
+    required: true
+    description: >
+      List of URLs fetched for this profile. Each entry includes the URL,
+      fetch date, HTTP status, content hash, and path to raw file.
+    items:
+      type: object
+      required:
+        - url
+        - fetch_date
+        - http_status
+        - content_hash
+        - raw_file
+      fields:
+        - field: url
+          type: string (URL)
+          required: true
+          description: Source URL that was fetched.
+        - field: fetch_date
+          type: string (ISO 8601 date)
+          required: true
+          description: When this specific URL was fetched.
+        - field: http_status
+          type: integer
+          required: true
+          description: HTTP status code returned (e.g., 200).
+        - field: content_hash
+          type: string
+          required: true
+          description: >
+            SHA-256 checksum of the raw fetched content.
+            Format: "sha256:{hex_digest}".
+        - field: raw_file
+          type: string (path)
+          required: true
+          description: >
+            Path to the raw fetched content file in .firecrawl/ or
+            .dataforseo/ directory.
+
+  # ─── Profile body ───────────────────────────────────────────────────────────
+
+  - field: profile
+    type: object
+    required: true
+    description: >
+      Nested object containing all qualitative and quantitative profile data.
+    fields:
+      - field: funding
+        type: string
+        required: true
+        description: >
+          Funding status. Options: "Bootstrapped", "VC-backed ($XM Series X)",
+          "Grant-funded", "Unknown".
+
+      - field: delivery_model
+        type: string
+        required: true
+        enum:
+          - SOFTWARE
+          - MANAGED
+          - HYBRID
+        description: >
+          How the competitor delivers their solution.
+          SOFTWARE = pure SaaS/platform, MANAGED = services-led,
+          HYBRID = both.
+
+      - field: gtm_motion
+        type: string
+        required: true
+        enum:
+          - Self-serve
+          - Sales-led
+          - Partner-led
+          - Marketplace
+        description: >
+          Primary go-to-market motion. May include combinations
+          (e.g., "Sales-led + partner").
+
+      - field: estimated_customers
+        type: string
+        required: true
+        description: >
+          Estimated customer count with supporting evidence.
+          Format: "{number}+ ({evidence sources})"
+          (e.g., "500+ (G2 reviews: 150, LinkedIn employees: 45)").
+
+      - field: positioning_headline
+        type: string
+        required: true
+        description: >
+          Verbatim positioning headline from the competitor's homepage
+          or primary landing page.
+
+      - field: pricing
+        type: array
+        required: true
+        description: >
+          List of pricing tiers extracted from the competitor's pricing page.
+          Must have >= 1 entry for DEEP depth, >= 0 for STANDARD depth.
+        validation_note: "Must have >= 1 entry for DEEP depth, >= 0 for STANDARD depth"
+        items:
+          type: object
+          required:
+            - tier
+            - price_monthly_eur
+            - billing
+            - source_url
+            - source_verified_date
+          fields:
+            - field: tier
+              type: string
+              required: true
+              description: Name of the pricing tier (e.g., "Self-Serve").
+            - field: price_monthly_eur
+              type: number
+              required: true
+              description: Monthly price in EUR for this tier.
+            - field: billing
+              type: string
+              required: true
+              description: Billing frequency (e.g., "monthly", "annual").
+            - field: source_url
+              type: string (URL)
+              required: true
+              description: URL where this pricing was found.
+            - field: source_verified_date
+              type: string (ISO 8601 date)
+              required: true
+              description: Date the pricing was last verified.
+
+      - field: strengths
+        type: array of strings
+        required: true
+        description: >
+          Competitor strengths derived from review analysis
+          (minimum 20 reviews). List format.
+        min_items: 1
+
+      - field: weaknesses
+        type: array of strings
+        required: true
+        description: >
+          Competitor weaknesses derived from review analysis
+          (minimum 20 reviews). List format.
+        min_items: 1
+
+      - field: review_summary
+        type: object
+        required: true
+        description: Aggregated review metrics for this competitor.
+        fields:
+          - field: total_reviews_analyzed
+            type: integer
+            required: true
+            description: Total number of reviews analyzed across all sources.
+          - field: sources
+            type: array of strings
+            required: true
+            description: >
+              List of review sources with counts.
+              Format: ["G2 (15)", "Capterra (7)", "Reddit (3)"].
+          - field: avg_rating
+            type: number
+            required: true
+            description: Average rating across all reviews (1.0-5.0).
+          - field: top_praise
+            type: string
+            required: true
+            description: >
+              Most common praise theme across reviews
+              (e.g., "Ease of setup, multi-source signals").
+          - field: top_complaint
+            type: string
+            required: true
+            description: >
+              Most common complaint theme across reviews
+              (e.g., "Self-serve pricing jumps significantly at scale").
+
+      - field: tech_stack
+        type: array
+        required: true
+        description: >
+          Technologies detected in the competitor's stack from
+          technographic analysis.
+        items:
+          type: object
+          required:
+            - category
+            - tools
+            - detection_method
+          fields:
+            - field: category
+              type: string
+              required: true
+              description: Technology category (e.g., "AI/LLM", "CRM", "Analytics").
+            - field: tools
+              type: array of strings
+              required: true
+              description: List of specific tools detected in this category.
+            - field: detection_method
+              type: string
+              required: true
+              description: >
+                Method used to detect the technology
+                (e.g., "dataforseo_domain_analytics", "builtwith", "wappalyzer").
+
+      - field: vulnerabilities
+        type: array of strings
+        required: true
+        description: >
+          Identified vulnerabilities or gaps in the competitor's offering
+          that ClarityRev could exploit.
+        min_items: 1
+
+# ─── Controlled enums (reference) ─────────────────────────────────────────────
+
+enums:
+  delivery_model:
+    values: [SOFTWARE, MANAGED, HYBRID]
+    description: "How the competitor delivers their solution to customers."
+
+  gtm_motion:
+    values: [Self-serve, Sales-led, Partner-led, Marketplace]
+    description: "Primary go-to-market motion."
+
+  freshness_status:
+    values: [FRESH, STALE, EXPIRED]
+    description: "Current freshness state relative to SLA."
+
+  fetch_method:
+    values: [firecrawl_search, firecrawl_scrape, dataforseo, openregistry, manual]
+    description: "Tool used for primary data collection."
+
+# ─── Validation rules ─────────────────────────────────────────────────────────
+
+validation:
+  - rule: "Pricing array must have >= 1 entry for DEEP depth, >= 0 for STANDARD depth"
+    severity: WARNING
+    condition: "profile.pricing.length === 0 && pipeline_depth === 'DEEP'"
+
+  - rule: "strengths and weaknesses must each have >= 1 entry"
+    severity: ERROR
+    condition: "profile.strengths.length === 0 || profile.weaknesses.length === 0"
+
+  - rule: "fresh_until must equal fetch_date + freshness_sla duration"
+    severity: ERROR
+    condition: "fresh_until !== calculate_date(fetch_date, freshness_sla)"
+
+  - rule: "At least one source_url must be provided"
+    severity: ERROR
+    condition: "source_urls.length === 0"
+
+  - rule: "freshness_status must be consistent with current date vs fresh_until"
+    severity: ERROR
+    condition: "freshness_status !== derive_freshness(fresh_until)"

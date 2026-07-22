@@ -1,0 +1,4 @@
+fetch_date: "2026-01-01"
+fresh_until: "2026-04-01"
+data_type: competitor-pricing
+source: syncgtm

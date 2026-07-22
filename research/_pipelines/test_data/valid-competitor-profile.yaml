@@ -1,0 +1,50 @@
+competitor_id: comp_syncgtm_v1
+fetch_date: '2026-07-01'
+fetch_method: firecrawl_scrape
+fresh_until: '2026-09-29'
+freshness_sla: 90d
+freshness_status: FRESH
+name: SyncGTM
+niches_where_relevant: []
+profile:
+  delivery_model: SOFTWARE
+  estimated_customers: '500+ (G2: 150, LinkedIn: 45)'
+  funding: VC-backed (5M Series A)
+  gtm_motion: Sales-led
+  positioning_headline: Revenue intelligence for modern teams
+  pricing:
+  - billing: monthly
+    price_monthly_eur: 99
+    source_url: https://syncgtm.com/pricing
+    source_verified_date: '2026-07-01'
+    tier: Starter
+  review_summary:
+    avg_rating: 4.2
+    sources:
+    - G2 (15)
+    - Capterra (7)
+    - Reddit (3)
+    top_complaint: Pricing at scale
+    top_praise: Ease of use
+    total_reviews_analyzed: 25
+  strengths:
+  - Easy setup
+  - Great support
+  tech_stack:
+  - category: AI/LLM
+    detection_method: wappalyzer
+    tools:
+    - GPT-4
+    - Claude
+  vulnerabilities:
+  - No self-serve onboarding
+  weaknesses:
+  - Limited integrations
+  - Pricey at scale
+source_urls:
+- content_hash: sha256:abc123
+  fetch_date: '2026-07-01'
+  http_status: 200
+  raw_file: .firecrawl/syncgtm.html
+  url: https://syncgtm.com
+url: https://syncgtm.com

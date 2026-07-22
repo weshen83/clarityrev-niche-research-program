@@ -1,0 +1,13 @@
+# TOOL_ERROR_LOG.yaml — Append-only tool error log
+# Schema per entry:
+#   timestamp: ISO 8601
+#   tool: firecrawl | dataforseo | openregistry_mcp | reddit_research_mcp | context7_mcp | gdelt_api | eurostat_api | oecd_api | public_ats_api | other
+#   error_code: HTTP status code or error type (TIMEOUT, CONNECTION_REFUSED, RATE_LIMITED, AUTH_FAILED, PARSE_ERROR)
+#   niche_id: "N-XXX" or "SYSTEM"
+#   operation: what was being attempted
+#   url_or_endpoint: the failing URL or API endpoint
+#   resolution: RETRYING | FALLBACK_TRIGGERED | SOURCE_UNAVAILABLE | MANUAL_REQUIRED
+#   retry_count: number of retries attempted
+#   notes: optional
+
+errors: []

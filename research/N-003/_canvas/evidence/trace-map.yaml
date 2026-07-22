@@ -1,0 +1,27 @@
+claims:
+- claim_id: C-001
+  claim_text: Competitive pricing
+  sources:
+  - source_file: N-003/00-intel/fresh-0.yaml
+    fetch_date: '2026-07-20'
+    freshness_status: FRESH
+    fresh_until: '2026-12-31'
+    data_type: competitor_pricing
+- claim_id: C-002
+  claim_text: Job postings increasing
+  sources:
+  - source_file: N-003/00-intel/job-posting.yaml
+    fetch_date: '2026-07-20'
+    freshness_status: FRESH
+    fresh_until: '2026-12-31'
+    data_type: job_postings
+    url: https://example.com/jobs/engineer
+- claim_id: C-003
+  claim_text: Hiring CTO
+  sources:
+  - source_file: N-003/00-intel/hiring-signal.yaml
+    fetch_date: '2026-07-20'
+    freshness_status: FRESH
+    fresh_until: '2026-07-30'
+    data_type: hiring_signals
+    url: https://example.com/hiring/cto

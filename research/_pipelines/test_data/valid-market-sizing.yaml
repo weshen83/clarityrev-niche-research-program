@@ -1,0 +1,28 @@
+concentration: fragmented
+fetch_date: '2026-07-01'
+geographic_scope:
+  justification: Founder network strongest in NL
+  primary: NL
+  secondary:
+  - BE
+  - DE
+growth_trajectory: growing
+methodology: hybrid
+niche_existence_proof:
+- LinkedIn groups
+- Industry events
+niche_id: N-001
+tam:
+  companies: 8000
+  companies_range: 6,000-12,000
+  confidence: MEDIUM
+  revenue_eur: 96000000
+  sources:
+  - methodology: Business demography by NACE code
+    name: EUROSTAT NACE J.62
+    url: https://ec.europa.eu/eurostat
+    year: 2025
+  - methodology: Market sizing by segment
+    name: Gartner Market Guide 2025
+    url: https://gartner.com
+    year: 2025

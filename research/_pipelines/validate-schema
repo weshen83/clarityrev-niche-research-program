@@ -1,0 +1,1288 @@
+#!/usr/bin/env python3
+"""
+validate-schema — Script 3 of 5: Validate structured data files against
+schema definitions BEFORE data enters canvas authoring.
+
+Google SRE pattern: validates data at ingestion time, not mid-canvas.
+Catches schema violations early — prevents bad data from propagating
+into canvas authoring and contaminating downstream analysis.
+
+Usage:
+    ./validate-schema DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]
+
+DATA_TYPE is one of: competitor-profile, review-corpus, market-sizing,
+                     canvas-frontmatter
+
+Exit codes:
+    0  PASS                 All checks passed, no issues.
+    1  FAIL                 Blocking violations found (required missing,
+                            type mismatch, enum, range, format, or custom rule
+                            ERROR).
+    2  PASS_WITH_WARNINGS   Non-blocking issues found (optional missing,
+                            warnings, custom rule WARNING).
+    3  INTERNAL_ERROR       Script bug, corrupted schema/data YAML, or
+                            missing dependency. Escalate to Wesley.
+    4  INVALID_INPUT        Invalid arguments, unknown data type, or file
+                            not found. Fix inputs and re-run.
+
+Output: Structured JSON to stdout. Human-readable logs to stderr.
+"""
+
+import sys
+import re
+import traceback
+from pathlib import Path
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urlparse
+
+# --- Path setup for importing lib.pipeline_ops ---
+_SCRIPT_DIR = Path(__file__).resolve().parent
+sys.path.insert(0, str(_SCRIPT_DIR))
+
+from lib.pipeline_ops import (
+    yaml, load_yaml_safe, emit_result, emit_log, ExitCode,
+    SCHEMAS_DIR, PROGRAM_ROOT, repo_relative_path,
+    set_quiet_mode, set_agent_mode,
+)
+
+
+# ============================================================================
+# CONSTANTS
+# ============================================================================
+
+SCRIPT_NAME = "validate-schema"
+
+DATA_TYPE_SCHEMA_MAP = {
+    "competitor-profile": "competitor-profile-schema.yaml",
+    "review-corpus": "review-corpus-schema.yaml",
+    "market-sizing": "market-sizing-schema.yaml",
+    "canvas-frontmatter": "canvas-frontmatter-schema.yaml",
+}
+
+VALID_DATA_TYPES = set(DATA_TYPE_SCHEMA_MAP.keys())
+
+
+# ============================================================================
+# HELP TEXT
+# ============================================================================
+
+def print_help():
+    """Print usage information and exit."""
+    help_text = """\
+%s -- Validate structured data files against schema definitions
+
+USAGE
+    ./%s DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]
+
+ARGUMENTS
+    DATA_TYPE   One of: %s
+    FILE_PATH   Path to the structured data file (YAML) to validate
+
+OPTIONS
+    --schema-dir PATH   Path to schema directory (default: schemas/ under
+                        the niche-program root)
+    --dry-run           Load schema and data file, report what would be
+                        checked, then exit 0 without performing validation.
+    --help, -h          Show this help message and exit.
+
+DATA TYPES
+    competitor-profile    Competitor profile (profile, pricing, tech stack)
+    review-corpus        Review corpus (reviews, sources, themes)
+    market-sizing        Market sizing (TAM, geographic scope, concentration)
+    canvas-frontmatter   Canvas frontmatter (scores, evidence, metrics)
+
+EXIT CODES
+    0  PASS               All checks passed, no issues.
+    1  FAIL               Blocking violations found (required missing,
+                          type mismatch, enum violation, range violation,
+                          format violation, or custom rule ERROR).
+    2  PASS_WITH_WARNINGS Non-blocking issues found (optional missing
+                          fields, warnings, custom rule WARNING).
+    3  INTERNAL_ERROR     Script bug, corrupted YAML, or missing dependency.
+                          Escalate to Wesley.
+    4  INVALID_INPUT      Invalid arguments, unknown data type, or file
+                          not found. Fix inputs and re-run.
+
+OUTPUT
+    Structured JSON to stdout. Human-readable logs to stderr.
+
+EXAMPLES
+    # Basic validation
+    ./%s competitor-profile \
+        N-001/02-competitor-intel/N-001-competitor-profile-syncgtm-v1.yaml
+
+    # Custom schema directory
+    ./%s review-corpus path/to/data.yaml --schema-dir /custom/schemas
+
+    # Dry run
+    ./%s market-sizing path/to/data.yaml --dry-run
+
+    # Canvas frontmatter
+    ./%s canvas-frontmatter N-001/_canvas/frontmatter-N-001.yaml
+""" % (
+    SCRIPT_NAME, SCRIPT_NAME,
+    ", ".join(sorted(VALID_DATA_TYPES)),
+    SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME
+)
+    print(help_text, end="")
+    sys.exit(0)
+
+
+# ============================================================================
+# ARGUMENT PARSING
+# ============================================================================
+
+def parse_validate_args():
+    """
+    Parse command-line arguments for validate-schema.
+
+    Returns:
+        (data_type, file_path: Path, schema_dir: Optional[Path], dry_run: bool)
+    """
+    args = sys.argv[1:]
+
+    if not args or "--help" in args or "-h" in args:
+        print_help()
+
+    dry_run = "--dry-run" in args
+    if dry_run:
+        args.remove("--dry-run")
+
+    schema_dir = None
+    if "--schema-dir" in args:
+        idx = args.index("--schema-dir")
+        if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
+            schema_dir = Path(args[idx + 1]).resolve()
+            args = args[:idx] + args[idx+2:]
+        else:
+            emit_log("ERROR", "--schema-dir requires a path argument")
+            emit_result(ExitCode.INVALID_INPUT, {
+                "error": "--schema-dir requires a path argument",
+                "usage": "%s DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]" % SCRIPT_NAME
+            })
+
+    if len(args) < 2:
+        emit_log("ERROR", "Missing required positional arguments")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Missing required positional arguments: DATA_TYPE FILE_PATH",
+            "usage": "%s DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]" % SCRIPT_NAME,
+            "valid_data_types": sorted(VALID_DATA_TYPES)
+        })
+
+    data_type = args[0]
+    file_path_arg = args[1]
+
+    if data_type not in VALID_DATA_TYPES:
+        emit_log("ERROR", "Unknown DATA_TYPE: '%s'" % data_type)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Unknown DATA_TYPE: '%s'" % data_type,
+            "valid_data_types": sorted(VALID_DATA_TYPES)
+        })
+
+    data_file = Path(file_path_arg).resolve()
+    # P1-11: Reject paths outside project directory
+    try:
+        data_file.relative_to(PROGRAM_ROOT)
+    except ValueError:
+        emit_log("ERROR", "File path is outside project directory: %s" % data_file)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "File path is outside project directory: %s" % str(data_file),
+            "file_path": repo_relative_path(data_file),
+            "program_root": str(PROGRAM_ROOT)
+        })
+    if not data_file.exists():
+        emit_log("ERROR", "File not found: %s" % data_file)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "File not found: %s" % str(data_file),
+            "file_path": repo_relative_path(data_file)
+        })
+
+    if not data_file.is_file():
+        emit_log("ERROR", "Path is not a file: %s" % data_file)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Path is not a file: %s" % str(data_file)
+        })
+
+    return data_type, data_file, schema_dir, dry_run
+
+
+# ============================================================================
+# SCHEMA LOADING & STRUCTURE VALIDATION
+# ============================================================================
+
+def load_and_validate_schema(data_type, schema_dir=None):
+    """
+    Load the schema definition file for the given data type.
+
+    Returns:
+        (schema_data: dict, schema_path: Path)
+    """
+    if schema_dir is None:
+        schema_dir = SCHEMAS_DIR
+
+    schema_filename = DATA_TYPE_SCHEMA_MAP[data_type]
+    schema_path = schema_dir / schema_filename
+
+    if not schema_path.exists():
+        emit_log("ERROR", "Schema file not found: %s" % schema_path)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Schema file not found: %s" % str(schema_path),
+            "schema_file": repo_relative_path(schema_path)
+        })
+
+    try:
+        schema_data = load_yaml_safe(schema_path)
+    except ValueError as e:
+        emit_log("ERROR", "Schema file corrupted: %s — %s" % (schema_path, e))
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Schema file corrupted: %s" % str(schema_path),
+            "details": str(e),
+            "schema_file": repo_relative_path(schema_path),
+        })
+    if schema_data is None:
+        emit_log("ERROR", "Failed to load schema (empty or missing): %s" % schema_path)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Failed to load schema: %s" % str(schema_path),
+            "schema_file": repo_relative_path(schema_path)
+        })
+
+    _validate_schema_structure(schema_data, schema_path)
+
+    schema_meta = schema_data.get("schema", {})
+    emit_log("INFO", "Loaded schema: %s v%s" % (
+        schema_meta.get("name", schema_filename),
+        schema_meta.get("version", "?")
+    ))
+
+    return schema_data, schema_path
+
+
+def _validate_schema_structure(schema_data, schema_path):
+    """Validate that the loaded schema has the required structure."""
+
+    if not isinstance(schema_data, dict):
+        raise ValueError("Schema at %s must be a mapping (dict), got %s" % (
+            schema_path, type(schema_data).__name__))
+
+    if "schema" not in schema_data:
+        raise ValueError("Schema at %s missing required top-level key 'schema'" % schema_path)
+
+    schema_meta = schema_data["schema"]
+    if not isinstance(schema_meta, dict):
+        raise ValueError("Schema at %s.schema must be a mapping, got %s" % (
+            schema_path, type(schema_meta).__name__))
+
+    for key in ("name", "version", "source"):
+        if key not in schema_meta:
+            raise ValueError("Schema at %s missing schema.%s" % (schema_path, key))
+
+    if "fields" not in schema_data or not isinstance(schema_data["fields"], list):
+        raise ValueError("Schema at %s missing or invalid 'fields' list" % schema_path)
+
+    for i, field in enumerate(schema_data["fields"]):
+        if not isinstance(field, dict):
+            raise ValueError("Schema at %s field[%d] must be a mapping, got %s" % (
+                schema_path, i, type(field).__name__))
+        for key in ("field", "type", "required"):
+            if key not in field:
+                raise ValueError("Schema at %s field[%d] ('%s') missing required key '%s'" % (
+                    schema_path, i, field.get("field", "?"), key))
+
+    return True
+
+
+# ============================================================================
+# TYPE CHECKING
+# ============================================================================
+
+_STRING_SUBTYPES = frozenset({
+    "string (url)", "string (iso 8601 date)", "string (duration)",
+    "string (path)",
+})
+
+
+def _check_value_type(value, type_str):
+    """
+    Check that value matches the expected type_str.
+
+    Supports: string, string (URL), string (ISO 8601 date), string (duration),
+    string (path), integer, number, float, boolean, list, array, object, dict,
+    array of strings, array of <type>.
+
+    Returns True if the value matches the type, False otherwise.
+    """
+    if type_str is None:
+        return True
+
+    type_lower = type_str.lower().strip()
+
+    if type_lower.startswith("array of "):
+        item_type = type_lower[9:].strip()
+        if not isinstance(value, list):
+            return False
+        return all(_check_value_type(v, item_type) for v in value)
+
+    if type_lower in _STRING_SUBTYPES:
+        return isinstance(value, str)
+    elif type_lower == "string":
+        return isinstance(value, str)
+    elif type_lower == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    elif type_lower in ("number", "float"):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    elif type_lower == "boolean":
+        return isinstance(value, bool)
+    elif type_lower in ("list", "array"):
+        return isinstance(value, list)
+    elif type_lower in ("dict", "object"):
+        return isinstance(value, dict)
+
+    return True
+
+
+def _validate_string_format(value, type_str):
+    """
+    Validate string subtype format.
+
+    Returns (is_valid: bool, error_message: Optional[str])
+    """
+    type_lower = type_str.lower().strip()
+
+    if type_lower == "string (iso 8601 date)":
+        if not isinstance(value, str):
+            return False, "Not a string"
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+            return True, None
+        try:
+            datetime.fromisoformat(value)
+            return True, None
+        except ValueError:
+            return False, "'%s' is not a valid ISO 8601 date (expected YYYY-MM-DD)" % value
+
+    elif type_lower == "string (url)":
+        if not isinstance(value, str):
+            return False, "Not a string"
+        parsed = urlparse(value)
+        if parsed.scheme in ("http", "https") and bool(parsed.netloc):
+            return True, None
+        return False, "'%s' is not a valid URL (expected http/https scheme)" % value
+
+    elif type_lower == "string (duration)":
+        if not isinstance(value, str):
+            return False, "Not a string"
+        if re.match(r"^\d+d$", value):
+            return True, None
+        return False, "'%s' is not a valid duration (expected format like '90d')" % value
+
+    elif type_lower == "string (path)":
+        return isinstance(value, str), None
+
+    return True, None
+
+
+# ============================================================================
+# RECURSIVE FIELD-BY-FIELD VALIDATION
+# ============================================================================
+
+def validate_recursive(data, schema_fields, path_prefix="",
+                       violations=None, warnings=None,
+                       required_present=None, optional_missing=None):
+    """
+    Recursively validate data against a list of schema field definitions.
+
+    Supports:
+    - Leaf fields: required, type, enum, range, string format checks
+    - Object fields (with 'fields'/'children'): recurse into nested dict
+    - Array fields (with 'items'/'item_schema'): recurse into each item
+    """
+    if violations is None:
+        violations = []
+    if warnings is None:
+        warnings = []
+    if required_present is None:
+        required_present = []
+    if optional_missing is None:
+        optional_missing = []
+
+    if not isinstance(data, dict):
+        return
+
+    for field_spec in schema_fields:
+        field_name = field_spec.get("field")
+        if not field_name:
+            continue
+
+        full_path = "%s.%s" % (path_prefix, field_name) if path_prefix else field_name
+        value = data.get(field_name)
+
+        required = field_spec.get("required", False)
+        type_str = field_spec.get("type", "")
+        enum_values = field_spec.get("enum")
+        min_val = field_spec.get("min")
+        max_val = field_spec.get("max")
+        min_items = field_spec.get("min_items")
+
+        children = field_spec.get("fields") or field_spec.get("children")
+        item_schema = field_spec.get("items") or field_spec.get("item_schema")
+
+        # -- 1. REQUIRED check --
+        if required and (value is None or (isinstance(value, str) and value.strip() == "")):
+            violations.append({
+                "field": field_name,
+                "path": full_path,
+                "violation_type": "REQUIRED_MISSING",
+                "expected": type_str,
+                "actual": "None" if value is None else "empty string",
+                "message": "Required field '%s' is missing or empty" % full_path
+            })
+            continue
+
+        if required and value is not None:
+            required_present.append(full_path)
+
+        if not required and (value is None or (isinstance(value, str) and value.strip() == "")):
+            optional_missing.append(full_path)
+            continue
+
+        # -- 2. TYPE check --
+        type_ok = _check_value_type(value, type_str)
+        if not type_ok:
+            violations.append({
+                "field": field_name,
+                "path": full_path,
+                "violation_type": "TYPE_MISMATCH",
+                "expected": type_str,
+                "actual": type(value).__name__,
+                "message": "Field '%s' expected type '%s' but got %s" % (
+                    full_path, type_str, type(value).__name__)
+            })
+            continue
+
+        # -- 3. String FORMAT check --
+        if (isinstance(value, str) and "string" in type_str.lower()
+                and type_str.lower() != "string"):
+            is_valid, err_msg = _validate_string_format(value, type_str)
+            if not is_valid:
+                violations.append({
+                    "field": field_name,
+                    "path": full_path,
+                    "violation_type": "FORMAT_VIOLATION",
+                    "expected": "valid %s format" % type_str,
+                    "actual": value,
+                    "message": err_msg or "Field '%s' does not match expected format for '%s'" % (
+                        full_path, type_str)
+                })
+
+        # -- 4. ENUM check --
+        if enum_values and value is not None and value not in enum_values:
+            violations.append({
+                "field": field_name,
+                "path": full_path,
+                "violation_type": "ENUM_VIOLATION",
+                "expected": list(enum_values),
+                "actual": str(value),
+                "message": "Field '%s' value '%s' is not in allowed values: %s" % (
+                    full_path, value, list(enum_values))
+            })
+
+        # -- 5. NUMERIC RANGE check --
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if min_val is not None and value < min_val:
+                violations.append({
+                    "field": field_name,
+                    "path": full_path,
+                    "violation_type": "RANGE_VIOLATION",
+                    "expected": ">= %s" % min_val,
+                    "actual": value,
+                    "message": "Field '%s' value %s is below minimum %s" % (
+                        full_path, value, min_val)
+                })
+            if max_val is not None and value > max_val:
+                violations.append({
+                    "field": field_name,
+                    "path": full_path,
+                    "violation_type": "RANGE_VIOLATION",
+                    "expected": "<= %s" % max_val,
+                    "actual": value,
+                    "message": "Field '%s' value %s exceeds maximum %s" % (
+                        full_path, value, max_val)
+                })
+
+        # -- 6. min_items check for array fields --
+        if (isinstance(value, list) and min_items is not None
+                and len(value) < min_items):
+            warnings.append({
+                "field": field_name,
+                "path": full_path,
+                "violation_type": "MIN_ITEMS",
+                "expected": ">= %d items" % min_items,
+                "actual": "%d items" % len(value),
+                "message": "Field '%s' has %d items, minimum is %d" % (
+                    full_path, len(value), min_items)
+            })
+
+        # -- 7. NESTED: recurse into object children --
+        if children and isinstance(value, dict):
+            validate_recursive(value, children, full_path,
+                               violations, warnings,
+                               required_present, optional_missing)
+
+        # -- 8. NESTED: recurse into array items --
+        elif item_schema and isinstance(value, list):
+            _validate_array_items(value, item_schema, field_name, full_path,
+                                  violations, warnings,
+                                  required_present, optional_missing)
+
+
+def _validate_array_items(items, item_schema, field_name, full_path,
+                          violations, warnings,
+                          required_present, optional_missing):
+    """Validate each item in an array against the item schema."""
+
+    items_type = item_schema.get("type", "").lower().strip()
+    items_required = item_schema.get("required", [])
+    item_fields = item_schema.get("fields") or item_schema.get("children") or []
+
+    # Merge items.required list into individual field specs
+    enhanced_fields = []
+    for item_field in item_fields:
+        enhanced = dict(item_field)
+        fn = enhanced.get("field")
+        if fn and fn in items_required:
+            enhanced["required"] = True
+        enhanced_fields.append(enhanced)
+
+    for i, item in enumerate(items):
+        item_path = "%s[%d]" % (full_path, i)
+
+        if items_type in ("object", "dict") and not isinstance(item, dict):
+            violations.append({
+                "field": field_name,
+                "path": item_path,
+                "violation_type": "TYPE_MISMATCH",
+                "expected": "object",
+                "actual": type(item).__name__,
+                "message": "Array item at '%s' expected object, got %s" % (
+                    item_path, type(item).__name__)
+            })
+            continue
+
+        if enhanced_fields and isinstance(item, dict):
+            validate_recursive(item, enhanced_fields, item_path,
+                               violations, warnings,
+                               required_present, optional_missing)
+
+
+# ============================================================================
+# CUSTOM VALIDATION RULES PER DATA TYPE
+# ============================================================================
+
+def run_custom_validations(data_type, data, violations, warnings):
+    """Run data-type-specific custom validation rules.
+
+    Returns (custom_error_count, custom_warning_count)
+    """
+    dispatch = {
+        "competitor-profile": _custom_cp,
+        "review-corpus": _custom_rc,
+        "market-sizing": _custom_ms,
+        "canvas-frontmatter": _custom_cf,
+    }
+    fn = dispatch.get(data_type)
+    if fn:
+        return fn(data, violations, warnings)
+    return 0, 0
+
+
+# ---- Competitor Profile -----------------------------------------------------
+
+def _custom_cp(data, violations, warnings):
+    """Competitor-profile custom validation rules."""
+    ec = wc = 0
+
+    profile = data.get("profile", {})
+    if not isinstance(profile, dict):
+        violations.append({
+            "field": "profile", "path": "profile",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "object with competitor profile data",
+            "actual": "type: %s" % type(profile).__name__,
+            "message": "Competitor profile top-level 'profile' is missing or "
+                       "not an object -- cannot check nested fields"
+        })
+        return 1, 0
+
+    # fresh_until consistency with fetch_date + freshness_sla
+    fd = data.get("fetch_date")
+    fsla = data.get("freshness_sla")
+    fu = data.get("fresh_until")
+    if all(isinstance(v, str) for v in [fd, fsla, fu]):
+        m = re.match(r"^(\d+)d$", fsla)
+        if m:
+            sla_days = int(m.group(1))
+            try:
+                fd_dt = datetime.strptime(fd[:10], "%Y-%m-%d")
+                fu_dt = datetime.strptime(fu[:10], "%Y-%m-%d")
+                exp = fd_dt + timedelta(days=sla_days)
+                if abs((fu_dt - exp).days) > 1:
+                    violations.append({
+                        "field": "fresh_until", "path": "fresh_until",
+                        "violation_type": "CUSTOM_RULE",
+                        "expected": "~%s (= %s + %s)" % (
+                            exp.strftime("%Y-%m-%d"), fd, fsla),
+                        "actual": fu,
+                        "message": "fresh_until '%s' inconsistent with "
+                                   "fetch_date '%s' + freshness_sla '%s'" % (fu, fd, fsla)
+                    })
+                    ec += 1
+            except (ValueError, TypeError):
+                pass
+
+    # pricing array: at least 1 entry (WARNING)
+    pricing = profile.get("pricing", [])
+    if isinstance(pricing, list) and len(pricing) == 0:
+        warnings.append({
+            "field": "pricing", "path": "profile.pricing",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 pricing tier",
+            "actual": "empty pricing array",
+            "message": "Pricing array is empty -- at least 1 entry recommended for DEEP depth"
+        })
+        wc += 1
+
+    # strengths: at least 1 entry (ERROR)
+    strengths = profile.get("strengths", [])
+    if isinstance(strengths, list) and len(strengths) == 0:
+        violations.append({
+            "field": "strengths", "path": "profile.strengths",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 strength entry",
+            "actual": "empty list",
+            "message": "profile.strengths is empty -- at least 1 entry required"
+        })
+        ec += 1
+
+    # weaknesses: at least 1 entry (ERROR)
+    weaknesses = profile.get("weaknesses", [])
+    if isinstance(weaknesses, list) and len(weaknesses) == 0:
+        violations.append({
+            "field": "weaknesses", "path": "profile.weaknesses",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 weakness entry",
+            "actual": "empty list",
+            "message": "profile.weaknesses is empty -- at least 1 entry required"
+        })
+        ec += 1
+
+    # source_urls: at least 1 entry (ERROR)
+    surls = data.get("source_urls", [])
+    if isinstance(surls, list) and len(surls) == 0:
+        violations.append({
+            "field": "source_urls", "path": "source_urls",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 source URL",
+            "actual": "empty list",
+            "message": "source_urls is empty -- at least 1 source URL required"
+        })
+        ec += 1
+
+    # vulnerabilities: at least 1 entry (ERROR)
+    vulns = profile.get("vulnerabilities", [])
+    if isinstance(vulns, list) and len(vulns) == 0:
+        violations.append({
+            "field": "vulnerabilities", "path": "profile.vulnerabilities",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 vulnerability entry",
+            "actual": "empty list",
+            "message": "profile.vulnerabilities is empty -- at least 1 entry required"
+        })
+        ec += 1
+
+    # freshness_status consistency
+    fstat = data.get("freshness_status")
+    if isinstance(fstat, str) and isinstance(fu, str):
+        try:
+            fu_dt = datetime.strptime(fu[:10], "%Y-%m-%d")
+            fu_aware = fu_dt.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            exp_status = "FRESH" if now < fu_aware else "STALE"
+            if fstat != exp_status:
+                violations.append({
+                    "field": "freshness_status", "path": "freshness_status",
+                    "violation_type": "CUSTOM_RULE",
+                    "expected": exp_status,
+                    "actual": fstat,
+                    "message": "freshness_status is '%s' but fresh_until '%s' "
+                               "indicates '%s' (now: %s)" % (
+                        fstat, fu, exp_status, now.strftime("%Y-%m-%d"))
+                })
+                ec += 1
+        except (ValueError, TypeError):
+            pass
+
+    return ec, wc
+
+
+# ---- Review Corpus -----------------------------------------------------------
+
+def _custom_rc(data, violations, warnings):
+    """Review-corpus custom validation rules."""
+    ec = wc = 0
+
+    # total_reviews must equal sum of source counts
+    sources = data.get("sources", {})
+    total = data.get("total_reviews")
+    if isinstance(sources, dict) and isinstance(total, (int, float)):
+        src_sum = 0
+        for sk in ("g2", "capterra", "reddit"):
+            s = sources.get(sk, {})
+            if isinstance(s, dict):
+                src_sum += s.get("count", 0) or 0
+        if src_sum != total:
+            violations.append({
+                "field": "total_reviews", "path": "total_reviews",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "sum of source counts (%d)" % src_sum,
+                "actual": str(total),
+                "message": "total_reviews (%s) does not equal sum of source counts (%d)" % (
+                    total, src_sum)
+            })
+            ec += 1
+
+    # Per-review checks: rating 1-5, unique review_id
+    reviews = data.get("reviews", [])
+    if isinstance(reviews, list):
+        seen_ids = set()
+        for i, rv in enumerate(reviews):
+            if not isinstance(rv, dict):
+                continue
+            rating = rv.get("rating")
+            if isinstance(rating, int) and not isinstance(rating, bool):
+                if rating < 1 or rating > 5:
+                    violations.append({
+                        "field": "rating", "path": "reviews[%d].rating" % i,
+                        "violation_type": "CUSTOM_RULE",
+                        "expected": "integer between 1 and 5 inclusive",
+                        "actual": str(rating),
+                        "message": "Review #%d rating '%s' is outside allowed range (1-5)" % (
+                            i + 1, rating)
+                    })
+                    ec += 1
+            rid = rv.get("review_id")
+            if rid and isinstance(rid, str):
+                if rid in seen_ids:
+                    violations.append({
+                        "field": "review_id", "path": "reviews[%d].review_id" % i,
+                        "violation_type": "CUSTOM_RULE",
+                        "expected": "unique review_id",
+                        "actual": rid,
+                        "message": "Duplicate review_id '%s' at reviews[%d]" % (rid, i)
+                    })
+                    ec += 1
+                seen_ids.add(rid)
+
+        if len(reviews) == 0:
+            violations.append({
+                "field": "reviews", "path": "reviews",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "at least 1 review entry",
+                "actual": "empty reviews array",
+                "message": "Review corpus has no review entries"
+            })
+            ec += 1
+
+    # Warning: theme percentages should be 0-100
+    ta = data.get("theme_analysis", {})
+    if isinstance(ta, dict):
+        for lk in ("top_praise_themes", "top_complaint_themes"):
+            tl = ta.get(lk, [])
+            if isinstance(tl, list):
+                for j, entry in enumerate(tl):
+                    if isinstance(entry, dict):
+                        pct = entry.get("pct")
+                        if isinstance(pct, (int, float)) and (pct < 0 or pct > 100):
+                            warnings.append({
+                                "field": "pct",
+                                "path": "theme_analysis.%s[%d].pct" % (lk, j),
+                                "violation_type": "CUSTOM_RULE",
+                                "expected": "percentage 0-100",
+                                "actual": str(pct),
+                                "message": "Theme percentage '%s' is outside expected range 0-100" % pct
+                            })
+                            wc += 1
+
+    return ec, wc
+
+
+# ---- Market Sizing -----------------------------------------------------------
+
+def _custom_ms(data, violations, warnings):
+    """Market-sizing custom validation rules."""
+    ec = wc = 0
+
+    tam = data.get("tam", {})
+    if not isinstance(tam, dict):
+        violations.append({
+            "field": "tam", "path": "tam",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "object with TAM data",
+            "actual": "type: %s" % type(tam).__name__,
+            "message": "Top-level 'tam' is missing or not an object"
+        })
+        return 1, 0
+
+    # revenue_eur must be non-negative
+    rev = tam.get("revenue_eur")
+    if isinstance(rev, (int, float)) and rev < 0:
+        violations.append({
+            "field": "revenue_eur", "path": "tam.revenue_eur",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "non-negative integer",
+            "actual": str(rev),
+            "message": "TAM revenue_eur '%s' is negative" % rev
+        })
+        ec += 1
+
+    # companies must be non-negative
+    comp = tam.get("companies")
+    if isinstance(comp, (int, float)) and comp < 0:
+        violations.append({
+            "field": "companies", "path": "tam.companies",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "non-negative integer",
+            "actual": str(comp),
+            "message": "TAM companies '%s' is negative" % comp
+        })
+        ec += 1
+
+    # tam.sources: at least 1 entry
+    tsrc = tam.get("sources", [])
+    if isinstance(tsrc, list) and len(tsrc) == 0:
+        violations.append({
+            "field": "sources", "path": "tam.sources",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 source entry",
+            "actual": "empty list",
+            "message": "tam.sources is empty -- at least 1 source required for [E] grade"
+        })
+        ec += 1
+
+    # niche_existence_proof: at least 1 entry
+    proofs = data.get("niche_existence_proof", [])
+    if isinstance(proofs, list) and len(proofs) == 0:
+        violations.append({
+            "field": "niche_existence_proof", "path": "niche_existence_proof",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "at least 1 evidence entry",
+            "actual": "empty array",
+            "message": "niche_existence_proof is empty -- at least 1 entry required"
+        })
+        ec += 1
+
+    # WARNING: companies_range format
+    cr = tam.get("companies_range")
+    if isinstance(cr, str) and not re.match(r"^[0-9,]+-[0-9,]+$", cr):
+        warnings.append({
+            "field": "companies_range", "path": "tam.companies_range",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "range pattern like '6,000-12,000'",
+            "actual": cr,
+            "message": "companies_range '%s' does not match expected pattern (e.g., '6,000-12,000')" % cr
+        })
+        wc += 1
+
+    return ec, wc
+
+
+# ---- Canvas Frontmatter ------------------------------------------------------
+
+def _custom_cf(data, violations, warnings):
+    """Canvas-frontmatter custom validation rules."""
+    ec = wc = 0
+
+    # composite_score 0-10 (ERROR)
+    cs = data.get("composite_score")
+    if isinstance(cs, (int, float)) and not isinstance(cs, bool):
+        if cs < 0 or cs > 10:
+            violations.append({
+                "field": "composite_score", "path": "composite_score",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "0.0 to 10.0 inclusive",
+                "actual": str(cs),
+                "message": "composite_score '%s' is outside range 0-10" % cs
+            })
+            ec += 1
+
+    # composite_score_raw 0-10 (ERROR)
+    csr = data.get("composite_score_raw")
+    if isinstance(csr, (int, float)) and not isinstance(csr, bool):
+        if csr < 0 or csr > 10:
+            violations.append({
+                "field": "composite_score_raw", "path": "composite_score_raw",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "0.0 to 10.0 inclusive",
+                "actual": str(csr),
+                "message": "composite_score_raw '%s' is outside range 0-10" % csr
+            })
+            ec += 1
+
+    # sub-scores 1-10 (ERROR)
+    scores = data.get("scores", {})
+    if isinstance(scores, dict):
+        for sf in ("structural_attractiveness", "warm_access",
+                    "commercial_viability", "build_feasibility"):
+            val = scores.get(sf)
+            if isinstance(val, int) and not isinstance(val, bool):
+                if val < 1 or val > 10:
+                    violations.append({
+                        "field": sf, "path": "scores.%s" % sf,
+                        "violation_type": "CUSTOM_RULE",
+                        "expected": "integer between 1 and 10 inclusive",
+                        "actual": str(val),
+                        "message": "Sub-score '%s' value %s is outside range 1-10" % (sf, val)
+                    })
+                    ec += 1
+
+    # evidence_quality 0-100 (ERROR)
+    eq = data.get("evidence_quality")
+    if isinstance(eq, (int, float)) and not isinstance(eq, bool):
+        if eq < 0 or eq > 100:
+            violations.append({
+                "field": "evidence_quality", "path": "evidence_quality",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "0.0 to 100.0 inclusive",
+                "actual": str(eq),
+                "message": "evidence_quality '%s' is outside range 0-100" % eq
+            })
+            ec += 1
+
+    # freshness_score 0-100 (ERROR)
+    fs = data.get("freshness_score")
+    if isinstance(fs, (int, float)) and not isinstance(fs, bool):
+        if fs < 0 or fs > 100:
+            violations.append({
+                "field": "freshness_score", "path": "freshness_score",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "0.0 to 100.0 inclusive",
+                "actual": str(fs),
+                "message": "freshness_score '%s' is outside range 0-100" % fs
+            })
+            ec += 1
+
+    # high_uncertainty consistency check (ERROR)
+    ed = data.get("evidence_distribution", {})
+    hu = data.get("high_uncertainty")
+    if isinstance(ed, dict) and isinstance(hu, bool):
+        h_s = (ed.get("grade_H", 0) or 0) + (ed.get("grade_S", 0) or 0)
+        p_e = (ed.get("grade_P", 0) or 0) + (ed.get("grade_E", 0) or 0)
+        if h_s > p_e and hu is False:
+            violations.append({
+                "field": "high_uncertainty", "path": "high_uncertainty",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "true when >50%% claims are [H] or [S]",
+                "actual": "false",
+                "message": "high_uncertainty is false but (grade_H + grade_S) = %s "
+                           "exceeds (grade_P + grade_E) = %s" % (h_s, p_e)
+            })
+            ec += 1
+
+    # evidence_quality consistency with evidence_distribution (ERROR)
+    if isinstance(ed, dict) and isinstance(eq, (int, float)):
+        total_pe = (ed.get("grade_P", 0) or 0) + (ed.get("grade_E", 0) or 0)
+        if total_pe == 0 and eq > 0:
+            violations.append({
+                "field": "evidence_quality", "path": "evidence_quality",
+                "violation_type": "CUSTOM_RULE",
+                "expected": "0.0 when no [P] or [E] claims",
+                "actual": str(eq),
+                "message": "evidence_quality is %s but there are 0 [P] or [E] claims" % eq
+            })
+            ec += 1
+
+    # open_questions >= 0 (ERROR)
+    oq = data.get("open_questions")
+    if isinstance(oq, (int, float)) and oq < 0:
+        violations.append({
+            "field": "open_questions", "path": "open_questions",
+            "violation_type": "CUSTOM_RULE",
+            "expected": ">= 0",
+            "actual": str(oq),
+            "message": "open_questions '%s' is negative" % oq
+        })
+        ec += 1
+
+    # credit_consumed >= 0 (ERROR)
+    cc = data.get("credit_consumed", {})
+    if isinstance(cc, dict):
+        fc = cc.get("firecrawl")
+        if isinstance(fc, (int, float)) and fc < 0:
+            violations.append({
+                "field": "firecrawl", "path": "credit_consumed.firecrawl",
+                "violation_type": "CUSTOM_RULE",
+                "expected": ">= 0",
+                "actual": str(fc),
+                "message": "credit_consumed.firecrawl '%s' is negative" % fc
+            })
+            ec += 1
+        dse = cc.get("dataforseo_usd")
+        if isinstance(dse, (int, float)) and dse < 0:
+            violations.append({
+                "field": "dataforseo_usd", "path": "credit_consumed.dataforseo_usd",
+                "violation_type": "CUSTOM_RULE",
+                "expected": ">= 0",
+                "actual": str(dse),
+                "message": "credit_consumed.dataforseo_usd '%s' is negative" % dse
+            })
+            ec += 1
+
+    # WARNING: calibration_applied + composite_score == composite_score_raw
+    cal = data.get("calibration_applied")
+    if (isinstance(cal, bool) and cal
+            and isinstance(cs, (int, float)) and isinstance(csr, (int, float))
+            and cs == csr):
+        warnings.append({
+            "field": "calibration_applied", "path": "calibration_applied",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "composite_score differs from raw when calibration is applied",
+            "actual": "composite_score=%s, composite_score_raw=%s" % (cs, csr),
+            "message": "calibration_applied is true but composite_score (%s) "
+                       "equals composite_score_raw (%s)" % (cs, csr)
+        })
+        wc += 1
+
+    # WARNING: niche_id format check
+    nid = data.get("niche_id")
+    if isinstance(nid, str) and not re.match(r"^(?:N-\d{3}|CAL-[AB])$", nid):
+        warnings.append({
+            "field": "niche_id", "path": "niche_id",
+            "violation_type": "CUSTOM_RULE",
+            "expected": "N-XXX format (e.g., N-001)",
+            "actual": nid,
+            "message": "niche_id '%s' does not match N-XXX format" % nid
+        })
+        wc += 1
+
+    return ec, wc
+
+
+# ============================================================================
+# RESULT ASSEMBLY
+# ============================================================================
+
+def _count_by_type(violations, vtype):
+    """Count violations of a specific type."""
+    return [v for v in violations if v["violation_type"] == vtype]
+
+
+def assemble_verdict(violations, warnings,
+                     required_present, optional_missing,
+                     data_type, file_path, schema_path):
+    """
+    Assemble the validation result and determine the verdict.
+
+    Verdict logic (IMPLEMENTATION-SPEC.md S5.2 Step 4):
+    - REQUIRED_MISSING, TYPE_MISMATCH, ENUM_VIOLATION, RANGE_VIOLATION,
+      FORMAT_VIOLATION, or CUSTOM_RULE ERROR -> FAIL (exit 1)
+    - Only optional missing and warnings -> PASS_WITH_WARNINGS (exit 2)
+    - Nothing -> PASS (exit 0)
+    """
+    rm = _count_by_type(violations, "REQUIRED_MISSING")
+    tv = _count_by_type(violations, "TYPE_MISMATCH")
+    ev = _count_by_type(violations, "ENUM_VIOLATION")
+    rv = _count_by_type(violations, "RANGE_VIOLATION")
+    fv = _count_by_type(violations, "FORMAT_VIOLATION")
+    cv = _count_by_type(violations, "CUSTOM_RULE")
+
+    has_blocking = bool(rm or tv or ev or rv or fv or cv)
+    has_warnings_only = bool(optional_missing or warnings)
+
+    if has_blocking:
+        verdict = "FAIL"
+        # BLOCKED is used here because the pipeline should not proceed
+        # with invalid data (IMPLEMENTATION-SPEC.md S5.2 Step 4).
+        exit_code = ExitCode.BLOCKED
+    elif has_warnings_only:
+        verdict = "PASS_WITH_WARNINGS"
+        exit_code = ExitCode.WARNING
+    else:
+        verdict = "PASS"
+        exit_code = ExitCode.SUCCESS
+
+    result = {
+        "verdict": verdict,
+        "data_type": data_type,
+        "file_path": repo_relative_path(file_path),
+        "schema_file": repo_relative_path(schema_path),
+        "required_fields_present": len(required_present),
+        "required_fields_missing": len(rm),
+        "optional_fields_missing": len(optional_missing),
+        "enum_violations": len(ev),
+        "type_violations": len(tv),
+        "range_violations": len(rv),
+        "format_violations": len(fv),
+        "custom_rule_violations": len(cv),
+    }
+
+    if warnings:
+        result["warnings"] = warnings
+    if violations:
+        result["violations"] = violations
+
+    return exit_code, result
+
+
+def _count_fields(schema_fields):
+    """Count total field checks (including nested) for dry-run display."""
+    count = 0
+    for field in schema_fields:
+        count += 1
+        children = field.get("fields") or field.get("children")
+        if children:
+            count += _count_fields(children)
+        items = field.get("items") or field.get("item_schema")
+        if items:
+            iff = items.get("fields") or items.get("children")
+            if iff:
+                count += _count_fields(iff)
+    return count
+
+
+# ============================================================================
+# MAIN ENTRY POINT
+# ============================================================================
+
+def main():
+    """
+    Main entry point for validate-schema.
+
+    Flow (from IMPLEMENTATION-SPEC.md S5.2):
+    1. Parse arguments
+    2. Load and validate schema
+    3. Load data file (YAML)
+    3b. Dry-run mode: report what would be checked
+    4. Run base field-by-field validation (recursive)
+    5. Run custom data-type-specific validation
+    6. Assemble result with verdict
+    7. Emit structured JSON to stdout
+    """
+    # ── Extract --quiet / --agent-mode (consistent with preflight-check) ──
+    args = sys.argv[1:]
+    quiet_mode = "--quiet" in args
+    if quiet_mode:
+        args.remove("--quiet")
+    agent_mode = "--agent-mode" in args
+    if agent_mode:
+        args.remove("--agent-mode")
+    if agent_mode:
+        set_agent_mode(True)
+    elif quiet_mode:
+        set_quiet_mode(True)
+    sys.argv = [sys.argv[0]] + args
+
+    try:
+        # Step 1
+        data_type, file_path, schema_dir, dry_run = parse_validate_args()
+
+        cwd = str(Path.cwd())
+        rel = str(file_path)
+        if rel.startswith(cwd):
+            rel = rel[len(cwd)+1:]
+        emit_log("INFO", "Starting validation: %s -> %s" % (data_type, rel))
+
+        # Step 2
+        schema_data, schema_path = load_and_validate_schema(data_type, schema_dir)
+
+        # Step 3
+        emit_log("INFO", "Loading data file: %s" % file_path)
+        data = load_yaml_safe(file_path)
+        if data is None:
+            emit_log("ERROR", "Data file is empty: %s" % file_path)
+            emit_result(ExitCode.INVALID_INPUT, {
+                "verdict": "FAIL", "data_type": data_type,
+                "file_path": repo_relative_path(file_path), "schema_file": repo_relative_path(schema_path),
+                "error": "Data file is empty: %s" % file_path
+            })
+            return None  # Defensive: emit_result calls sys.exit(), but guards against future refactor
+        if not isinstance(data, dict):
+            emit_log("ERROR", "Data file root must be a mapping (dict), got %s" % type(data).__name__)
+            emit_result(ExitCode.INVALID_INPUT, {
+                "verdict": "FAIL", "data_type": data_type,
+                "file_path": repo_relative_path(file_path), "schema_file": repo_relative_path(schema_path),
+                "error": "Data file root must be a mapping (dict), got %s" % type(data).__name__
+            })
+            return None  # Defensive: emit_result calls sys.exit(), but guards against future refactor
+
+        schema_fields = schema_data.get("fields", [])
+        field_count = _count_fields(schema_fields)
+
+        # Step 3b: Dry-run
+        if dry_run:
+            sname = schema_data.get("schema", {}).get("name", "Unknown")
+            emit_log("INFO", "[DRY-RUN] Would validate '%s' against '%s'" % (rel, sname))
+            emit_log("INFO", "[DRY-RUN] Schema: %s" % schema_path)
+            emit_log("INFO", "[DRY-RUN] Would perform %d field checks + custom rules for '%s'" % (
+                field_count, data_type))
+            emit_log("INFO", "[DRY-RUN] Dry run complete")
+            emit_result(ExitCode.SUCCESS, {
+                "verdict": "DRY_RUN", "data_type": data_type,
+                "file_path": repo_relative_path(file_path), "schema_file": repo_relative_path(schema_path),
+                "dry_run": True, "field_checks_planned": field_count,
+                "message": "Dry run complete. --dry-run is informative only."
+            })
+
+        # Step 4: Base field validation
+        emit_log("INFO", "Running %d field checks..." % field_count)
+        violations = []
+        warnings_list = []
+        required_present = []
+        optional_missing = []
+
+        validate_recursive(data, schema_fields, "",
+                           violations, warnings_list,
+                           required_present, optional_missing)
+
+        emit_log("INFO", "Base checks: %d present, %d required missing, "
+                         "%d type, %d enum, %d range" % (
+            len(required_present),
+            len(_count_by_type(violations, "REQUIRED_MISSING")),
+            len(_count_by_type(violations, "TYPE_MISMATCH")),
+            len(_count_by_type(violations, "ENUM_VIOLATION")),
+            len(_count_by_type(violations, "RANGE_VIOLATION")),
+        ))
+
+        # Step 5: Custom validation
+        emit_log("INFO", "Running custom validation rules for '%s'..." % data_type)
+        custom_err, custom_warn = run_custom_validations(data_type, data, violations, warnings_list)
+        emit_log("INFO", "Custom rules: %d errors, %d warnings" % (custom_err, custom_warn))
+
+        # Step 6: Assemble
+        exit_code, result = assemble_verdict(
+            violations, warnings_list,
+            required_present, optional_missing,
+            data_type, file_path, schema_path
+        )
+
+        # Step 7: Emit
+        emit_log("INFO", "Verdict: %s (exit %d)" % (result["verdict"], exit_code.value))
+        emit_result(exit_code, result)
+
+    except ValueError as e:
+        emit_log("FATAL", "Validation error: %s" % e)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": str(e),
+            "traceback": traceback.format_exc(),
+            "data_type": sys.argv[1] if len(sys.argv) > 1 else "?",
+            "file_path": sys.argv[2] if len(sys.argv) > 2 else "?"
+        })
+    except Exception as e:
+        emit_log("FATAL", "Unexpected error: %s" % e)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Unexpected error: %s" % e,
+            "traceback": traceback.format_exc(),
+            "data_type": sys.argv[1] if len(sys.argv) > 1 else "?",
+            "file_path": sys.argv[2] if len(sys.argv) > 2 else "?"
+        })
+
+
+if __name__ == "__main__":
+    main()

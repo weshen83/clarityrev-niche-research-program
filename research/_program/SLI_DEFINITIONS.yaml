@@ -1,0 +1,38 @@
+# SLI_DEFINITIONS.yaml — Service Level Indicators
+slis:
+  fetch_success_rate:
+    description: "Percentage of tool fetch requests that succeed (non-error HTTP response)"
+    target: ">95%"
+    measurement: "TOOL_ERROR_LOG.yaml error count / total fetch operations per niche"
+
+  freshness_compliance:
+    description: "Percentage of source data files within their freshness SLA at canvas finalization"
+    target: ">90%"
+    measurement: "FRESHNESS_VIOLATION_LOG.yaml violation count / total source files"
+
+  credit_forecast_accuracy:
+    description: "How closely actual credit consumption matches per-niche estimates"
+    target: "Within 20% of estimate"
+    measurement: "CREDIT_BUDGET.yaml actual vs. estimated per niche"
+
+  per_niche_wall_clock:
+    description: "Wall-clock time per niche from Phase 1 start to Phase 4 complete"
+    target: "<45 minutes (hard timeout)"
+    measurement: "PIPELINE_CHECKPOINTS.yaml phase timestamps"
+
+  evidence_quality:
+    description: "Percentage of canvas claims graded [E] or higher"
+    target: ">50%"
+    measurement: "Canvas frontmatter evidence_distribution"
+
+  pipeline_availability:
+    description: "Percentage of time the pipeline is able to process niches (not blocked by tool outages)"
+    target: ">95% during active evaluation period"
+    measurement: "TOOL_ERROR_LOG.yaml system-level errors"
+
+alert_thresholds:
+  firecrawl_error_rate: {warning: 10, critical: 30, unit: "percent", window: "5 minutes"}
+  dataforseo_error_rate: {warning: 10, critical: 30, unit: "percent", window: "5 minutes"}
+  staleness_rate: {warning: 10, critical: 20, unit: "percent", window: "per niche"}
+  credit_burn_rate: {warning: 2000, critical: 4000, unit: "credits per hour"}
+  niche_wall_clock: {warning: 35, critical: 45, unit: "minutes"}

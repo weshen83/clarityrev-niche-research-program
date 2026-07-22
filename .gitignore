@@ -1,0 +1,28 @@
+# Python bytecode and cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Raw fetched content (large, ephemeral)
+.firecrawl/
+.dataforseo/
+
+# Credentials (never commit)
+CREDENTIALS.yaml
+_program/CREDENTIALS.yaml
+
+# Dashboard output (generated, not source)
+DASHBOARD_LATEST.yaml
+
+# Test artifacts
+*.tmp
+test_data/*.tmp
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

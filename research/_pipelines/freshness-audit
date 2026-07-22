@@ -1,0 +1,1247 @@
+#!/usr/bin/env python3
+"""
+freshness-audit — Script 2 of 5 for the ClarityRev 25-niche evaluation pipeline.
+
+Audits a completed niche canvas for source data freshness before finalization.
+Implements:
+  1. Source-count-based staleness ratio (§6.4)
+  2. Claim-weighted staleness ratio — the Eye Security bug fix (§6.4)
+     A single stale source supplying >20% of claims blocks the canvas
+     regardless of source-count ratio.
+  3. BLOCK-class hard enforcement for JOB/HIRING/INTENT data types (§6.1)
+  4. Retroactive content-hash comparison for HIGHEST-priority data types (§6.5)
+
+Usage:
+    ./freshness-audit NICHE_ID [--force] [--dry-run]
+
+Exit codes:
+    0  PASS       — All sources fresh, canvas ready for finalization
+    1  BLOCKED    — Blocking staleness found
+    2  WARNING    — Non-blocking staleness (0% < stale_ratio <= 10%)
+    3  INTERNAL_ERROR — Script bug, missing dependency, corrupted YAML
+    4  INVALID_INPUT  — NICHE_ID malformed or trace-map not found
+
+Design principles (Google SRE):
+  - Idempotent: running twice with same inputs produces same result
+  - Explicit error boundaries: every file read / YAML parse has defined failure mode
+  - Observable outputs: structured JSON to stdout, human-readable logs to stderr
+  - Graceful degradation: non-critical failures produce degraded results, not crashes
+"""
+
+import sys
+import re
+from pathlib import Path
+from typing import Dict, Any, List, Optional, Tuple, Set, NamedTuple
+
+# ─── Ensure lib/ is importable ──────────────────────────────────────────────────
+# Script is at _pipelines/freshness-audit, lib is at _pipelines/lib/pipeline_ops.py
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from lib.pipeline_ops import (
+    yaml,
+    load_yaml_safe,
+    write_yaml_atomic,
+    emit_result,
+    emit_log,
+    ExitCode,
+    FRESHNESS_SLA,
+    BLOCK_CLASS_DATA_TYPES,
+    STALE_RATIO_BLOCK_THRESHOLD,
+    find_trace_map,
+    find_pipeline_checkpoints,
+    lookup_sla,
+    get_sla_max_age,
+    is_block_class,
+    compute_content_hash,
+    parse_iso_date,
+    days_between,
+    now_utc,
+    resolve_niche_dir,
+    repo_relative_path,
+    set_quiet_mode,
+    set_agent_mode,
+)
+
+# ─── Constants ──────────────────────────────────────────────────────────────────
+
+# Name of the retroactive-check results file, stored alongside the trace-map
+RETROACTIVE_CHECK_FILENAME = "retroactive-check-results.yaml"
+
+# Data type SLA keys with HIGHEST re-fetch priority (D-04 INTENT, D-05 JOB, D-12 HIRING)
+HIGHEST_PRIORITY_SLA_KEYS: Set[str] = {"D-04", "D-05", "D-12"}
+
+# Thresholds
+CLAIM_WEIGHTED_BLOCK_THRESHOLD = 0.20    # >20% claims from one stale source → BLOCKED
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# HELP TEXT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def print_help() -> None:
+    """Print usage help and exit."""
+    help_text = """freshness-audit — Audit niche canvas source data freshness
+
+USAGE:
+    ./freshness-audit NICHE_ID [--force] [--dry-run]
+
+ARGUMENTS:
+    NICHE_ID       Niche identifier (N-001 through N-025, or CAL-A, CAL-B)
+    --force        Override BLOCK enforcement for emergency cases. Logs a waiver
+                   event to PIPELINE_CHECKPOINTS.yaml.
+    --dry-run      Validate inputs and trace-map, report what would be checked,
+                   exit 0. No mutation.
+
+DESCRIPTION:
+    Audits a completed niche canvas for source data freshness before finalization.
+    Four checks are performed on every source referenced by the canvas trace-map:
+
+      1. SOURCE-COUNT STALENESS RATIO
+         Collects all unique source files across all claims. For each, checks if
+         the file exists on disk and whether its fresh_until timestamp has passed.
+         If stale_ratio > 10%, the canvas is BLOCKED.
+
+      2. CLAIM-WEIGHTED STALENESS RATIO (Eye Security Bug Fix)
+         A single stale source that supplies >20% of claims blocks the canvas
+         regardless of the source-count ratio. This prevents the scenario where
+         "one bad source poisons half the canvas" while the numerical ratio looks fine.
+
+      3. BLOCK-CLASS HARD ENFORCEMENT
+         Data types in the INTENT, JOB, and HIRING classes have hard enforcement:
+         if stale AND re-fetch was attempted and failed (STALE_UNRECOVERABLE),
+         the canvas is BLOCKED unless --force is provided.
+
+      4. RETROACTIVE CONTENT-HASH COMPARISON
+         For HIGHEST-priority data types (news_intent, job_postings, hiring_signals),
+         emits the list of URLs that need re-fetching. If a retroactive-check-results.yaml
+         exists from a prior run, compares content hashes and flags mismatches as
+         VERIFIED_STALE.
+
+EXIT CODES:
+    0  PASS       — All sources fresh, canvas ready for finalization
+    1  BLOCKED    — Blocking staleness found: stale_ratio > 10%, OR claim-weighted
+                    ratio > 20%, OR BLOCK-class unrecoverable without --force
+    2  WARNING    — Non-blocking staleness: 0% < stale_ratio <= 10%
+    3  INTERNAL_ERROR — Script bug, missing dependency, or corrupted YAML
+    4  INVALID_INPUT  — NICHE_ID malformed or trace-map not found
+
+EXAMPLES:
+    ./freshness-audit N-001                    # Standard audit
+    ./freshness-audit N-001 --force             # Override BLOCK enforcement
+    ./freshness-audit N-001 --dry-run           # Validate and report, no mutation
+    ./freshness-audit CAL-A                     # Audit calibration niche
+    ./freshness-audit --help                    # This help text
+
+OUTPUT:
+    Structured JSON to stdout with fields:
+      verdict, niche_id, total_sources, stale_sources, stale_ratio,
+      claim_weighted_stale_ratio, block_class_violations,
+      retroactive_mismatches, blocked, stale_details[], retroactive_urls_to_check[]
+
+SOURCE OF TRUTH:
+    IMPLEMENTATION-SPEC.md §4 (freshness-audit contract) +
+    DATA-OPERATIONS-ARCHITECTURE.md §6 (freshness SLA table)
+"""
+    print(help_text)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 1: LOAD AND VALIDATE TRACE MAP
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def validate_trace_map(data: Any) -> List[Dict[str, Any]]:
+    """
+    Validate trace-map.yaml structure per §4.2 Step 1.
+
+    Required structure:
+      - Top-level 'claims' key that is a list
+      - Each claim must have: claim_id, sources (list)
+      - Each source must have: source_file, fetch_date, freshness_status, fresh_until
+
+    Returns the list of claims on success.
+    Raises ValueError with detailed error message on schema violation.
+    """
+    if not isinstance(data, dict):
+        raise ValueError(
+            "trace-map.yaml root must be a dictionary with a 'claims' key"
+        )
+
+    if "claims" not in data:
+        raise ValueError(
+            "trace-map.yaml missing required top-level key: 'claims'"
+        )
+
+    claims = data["claims"]
+    if not isinstance(claims, list):
+        raise ValueError(
+            "trace-map.yaml 'claims' must be a list, "
+            f"got {type(claims).__name__}"
+        )
+
+    if len(claims) == 0:
+        raise ValueError("trace-map.yaml 'claims' list is empty")
+
+    errors: List[str] = []
+    for i, claim in enumerate(claims):
+        if not isinstance(claim, dict):
+            errors.append(f"claims[{i}]: expected dict, got {type(claim).__name__}")
+            continue
+
+        if "claim_id" not in claim:
+            errors.append(f"claims[{i}]: missing required field 'claim_id'")
+
+        if "sources" not in claim:
+            errors.append(f"claims[{i}]: missing required field 'sources'")
+        elif not isinstance(claim["sources"], list):
+            errors.append(
+                f"claims[{i}].sources: expected list, "
+                f"got {type(claim['sources']).__name__}"
+            )
+        else:
+            for j, src in enumerate(claim["sources"]):
+                if not isinstance(src, dict):
+                    errors.append(f"claims[{i}].sources[{j}]: expected dict")
+                    continue
+                for field in ("source_file", "fetch_date", "freshness_status", "fresh_until"):
+                    if field not in src:
+                        errors.append(
+                            f"claims[{i}].sources[{j}]: missing required field '{field}'"
+                        )
+
+    if errors:
+        raise ValueError("trace-map.yaml schema violation: " + "; ".join(errors))
+
+    return claims
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 2: SOURCE FILE RESOLUTION AND FRESHNESS CHECK
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def resolve_source_file(source_file_path: str, niche_id: str) -> Optional[Path]:
+    """
+    Resolve a source file path from the trace-map to an actual filesystem path.
+
+    Resolution order:
+      1. If the path is absolute, use as-is.
+      2. Try relative to RESEARCH_DIR (e.g., 'N-001/02-competitor-intel/...').
+      3. Try relative to the niche directory (e.g., '02-competitor-intel/...').
+      4. Fallback: search by basename within the niche directory tree.
+
+    The research directory is computed as parent(resolve_niche_dir(niche_id)).
+
+    Returns None if the file cannot be found on disk.
+    """
+    p = Path(source_file_path)
+
+    # Absolute path
+    if p.is_absolute():
+        return p if p.exists() else None
+
+    try:
+        niche_dir = resolve_niche_dir(niche_id)
+        research_dir = niche_dir.parent  # research/ dir
+
+        # Relative to research/ (e.g., "N-001/02-competitor-intel/...")
+        p_research = research_dir / source_file_path
+        if p_research.exists():
+            return p_research
+
+        # Relative to niche dir (e.g., "02-competitor-intel/...")
+        p_niche = niche_dir / source_file_path
+        if p_niche.exists():
+            return p_niche
+
+        # Basename-based fallback: search by filename within niche directory (MEDIUM fix)
+        basename = p.name
+        if basename and niche_dir.exists():
+            for found_path in niche_dir.rglob(basename):
+                if found_path.is_file():
+                    emit_log(
+                        "INFO",
+                        f"Resolved '{source_file_path}' by basename fallback "
+                        f"→ {found_path}",
+                    )
+                    return found_path
+    except ValueError:
+        pass
+
+    return None
+
+
+def read_source_freshness(source_path: Path) -> Tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    Read fetch_date, fresh_until, and data_type from a source data file on disk.
+
+    Tries multiple field naming conventions used across different data producers:
+      - fetch_date / fetched_at / collected_at / retrieval_date
+      - fresh_until / freshness / valid_until / expires_at
+      - data_type / analysis_type / type / category
+
+    Returns (fetch_date_str, fresh_until_str, data_type_str).
+    Any of these may be None if the field is not found.
+    """
+    try:
+        data = load_yaml_safe(source_path)
+    except ValueError as e:
+        emit_log("WARNING", f"Could not parse source file {source_path}: {e}")
+        return None, None, None
+
+    if data is None or not isinstance(data, dict):
+        return None, None, None
+
+    # Try common field names for fetch_date
+    fetch_date = _first_value(data, [
+        "fetch_date", "fetched_at", "collected_at", "retrieval_date", "date_fetched",
+    ])
+
+    # Try common field names for fresh_until
+    fresh_until = _first_value(data, [
+        "fresh_until", "freshness", "valid_until", "expires_at", "expiry_date",
+        "freshness_expiry", "sla_expiry",
+    ])
+
+    # Try common field names for data_type
+    data_type = _first_value(data, [
+        "data_type", "analysis_type", "type", "category", "source_type",
+    ])
+
+    # If data_type is still None, try to infer from the trace-map source's
+    # file name pattern (e.g., N-001-competitor-pricing-... → competitor_pricing)
+    if not data_type:
+        data_type = _infer_data_type_from_filename(source_path)
+
+    return fetch_date, fresh_until, data_type
+
+
+def _first_value(data: Dict[str, Any], keys: List[str]) -> Optional[str]:
+    """Return the first non-None string value found for any of the given keys."""
+    for key in keys:
+        val = data.get(key)
+        if val is not None:
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+            # datetime objects → ISO string
+            if hasattr(val, "isoformat"):
+                return val.isoformat()
+            # Other types → stringify
+            s = str(val).strip()
+            if s and s.lower() not in ("none", "null", "n/a", ""):
+                return s
+    return None
+
+
+def _infer_data_type_from_filename(file_path: Path) -> Optional[str]:
+    """
+    Attempt to infer the data_type from the filename pattern.
+    Handles naming conventions like:
+      N-001-competitor-pricing-syncgtm-v1.yaml  → competitor_pricing
+      CAL-A-competitor-profile-acme-v2.yaml      → competitor_profile
+    """
+    stem = file_path.stem  # e.g., N-001-competitor-pricing-syncgtm-v1
+
+    # Strip leading NICHE_ID prefix (e.g., N-001-, CAL-A-)
+    parts = stem.split("-", 2)
+    if len(parts) >= 3:
+        potential_type = parts[1]  # e.g., "competitor"
+        potential_subtype = parts[2].rsplit("-", 1)[0]  # everything before -v1
+
+        # Map hyphenated names to underscore SLA data_type keys
+        slug = f"{potential_type}_{potential_subtype}"
+
+        # Try exact match against all FRESHNESS_SLA data_type values
+        for entry in FRESHNESS_SLA.values():
+            if entry["data_type"].replace("_", "-") == slug.replace("_", "-"):
+                return entry["data_type"]
+
+        # More specific: take the first two segments
+        if len(parts) >= 3:
+            data_slug = f"{parts[1]}_{parts[2]}".split("-v")[0]  # strip version
+            for entry in FRESHNESS_SLA.values():
+                if entry["data_type"].replace("_", "-") == data_slug.replace("_", "-"):
+                    return entry["data_type"]
+
+    return None
+
+
+def get_staleness_action(data_type: str) -> str:
+    """Get the staleness_action for a data type from the SLA table."""
+    entry = lookup_sla(data_type)
+    if entry:
+        return entry.get("staleness_action", "RE_FETCH")
+    return "RE_FETCH"  # Conservative default
+
+
+def get_re_fetch_priority(data_type: str) -> str:
+    """Get the re_fetch_priority for a data type from the SLA table."""
+    entry = lookup_sla(data_type)
+    if entry:
+        return entry.get("re_fetch_priority", "LOW")
+    return "LOW"
+
+
+def get_sla_class(data_type: str) -> str:
+    """Get the SLA class for a data type. Returns 'UNKNOWN' if not found."""
+    entry = lookup_sla(data_type)
+    if entry:
+        return entry.get("class", "UNKNOWN")
+    return "UNKNOWN"
+
+
+def is_highest_priority(data_type: str) -> bool:
+    """Check if a data type has HIGHEST re-fetch priority."""
+    entry = lookup_sla(data_type)
+    if entry:
+        return entry.get("re_fetch_priority") == "HIGHEST"
+    return False
+
+
+class StalenessResult(NamedTuple):
+    """Result of source-count staleness computation.
+
+    Attributes:
+        total_unique_sources: Count of unique source files across all claims.
+        stale_ratio: Ratio of stale sources to total sources.
+        stale_sources: List of stale source entries with metadata.
+        unique_source_files: Dict mapping source file path to metadata.
+        source_to_claims: Dict mapping source file path to list of claim indices.
+    """
+    total_unique_sources: int
+    stale_ratio: float
+    stale_sources: List[Dict[str, Any]]
+    unique_source_files: Dict[str, Dict[str, Any]]
+    source_to_claims: Dict[str, List[int]]
+
+
+def compute_source_count_staleness(
+    claims: List[Dict[str, Any]],
+    niche_id: str,
+    dry_run: bool,
+) -> StalenessResult:
+    """
+    Compute source-count-based staleness (§4.2 Step 2).
+
+    Collects all unique source files across all claims, checks each for freshness,
+    and computes the stale ratio.
+
+    Returns:
+      StalenessResult NamedTuple with fields:
+        total_unique_sources, stale_ratio, stale_sources,
+        unique_source_files, source_to_claims
+    """
+    unique_source_files: Dict[str, Dict[str, Any]] = {}
+    source_to_claims: Dict[str, List[int]] = {}
+
+    # ── Collect all unique sources ──────────────────────────────────────────
+    for claim_idx, claim in enumerate(claims):
+        for src in claim.get("sources", []):
+            src_file = src.get("source_file", "")
+            if not src_file:
+                emit_log("WARNING", f"claims[{claim_idx}]: source has empty 'source_file'")
+                continue
+
+            if src_file not in unique_source_files:
+                unique_source_files[src_file] = {
+                    "fetch_date": src.get("fetch_date"),
+                    "fresh_until": src.get("fresh_until"),
+                    "freshness_status": src.get("freshness_status"),
+                    "data_type": src.get("data_type", ""),
+                    "sla_class": src.get("sla_class") or src.get("class", ""),
+                    "url": src.get("url") or src.get("original_url", ""),
+                    "re_fetch_attempted": src.get("re_fetch_attempted", False),
+                    "re_fetch_success": src.get("re_fetch_success", None),
+                }
+
+            if src_file not in source_to_claims:
+                source_to_claims[src_file] = []
+            source_to_claims[src_file].append(claim_idx)
+
+    total_unique_sources = len(unique_source_files)
+    total_claims = len(claims)
+
+    emit_log(
+        "INFO",
+        f"Found {total_unique_sources} unique source files "
+        f"across {total_claims} claims",
+    )
+
+    if dry_run:
+        emit_log("INFO", "--- Sources discovered (dry-run) ---")
+        for src_file in sorted(unique_source_files.keys()):
+            meta = unique_source_files[src_file]
+            emit_log(
+                "INFO",
+                f"  {src_file}  [type={meta['data_type'] or 'unknown'}, "
+                f"fetched={meta['fetch_date'] or '?'}, "
+                f"fresh_until={meta['fresh_until'] or '?'}]",
+            )
+
+    # ── Check each source for staleness ─────────────────────────────────────
+    now = now_utc()
+    stale_sources: List[Dict[str, Any]] = []
+
+    for src_file, src_meta in unique_source_files.items():
+        resolved_path = resolve_source_file(src_file, niche_id)
+
+        if resolved_path is None:
+            # File does not exist on disk → ORPHAN (stale, severity HIGH)
+            stale_entry = _build_stale_entry(
+                src_file=src_file,
+                src_meta=src_meta,
+                fetch_date=src_meta.get("fetch_date", "unknown"),
+                fresh_until=src_meta.get("fresh_until", "unknown"),
+                data_type=src_meta.get("data_type", "unknown") or "unknown",
+                sla_class=src_meta.get("sla_class", "UNKNOWN") or "UNKNOWN",
+                actual_age_days=None,
+                max_age_days=None,
+                resolution="ORPHAN",
+                resolution_detail="File not found on disk",
+            )
+            stale_sources.append(stale_entry)
+            emit_log("WARNING", f"ORPHAN source: {src_file} — file not found on disk")
+            continue
+
+        # Read freshness from the file on disk
+        fetch_date_str, fresh_until_str, data_type = read_source_freshness(resolved_path)
+
+        # Fall back to trace-map metadata if file doesn't have the fields
+        if not fetch_date_str:
+            fetch_date_str = src_meta.get("fetch_date")
+        if not fresh_until_str:
+            fresh_until_str = src_meta.get("fresh_until")
+        if not data_type:
+            data_type = src_meta.get("data_type", "unknown")
+        sla_class = src_meta.get("sla_class", "") or get_sla_class(data_type)
+
+        if not fetch_date_str or not fresh_until_str:
+            # Cannot determine freshness — treat as stale
+            stale_entry = _build_stale_entry(
+                src_file=src_file,
+                src_meta=src_meta,
+                fetch_date=fetch_date_str or "unknown",
+                fresh_until=fresh_until_str or "unknown",
+                data_type=data_type or "unknown",
+                sla_class=sla_class or "UNKNOWN",
+                actual_age_days=None,
+                max_age_days=None,
+                resolution="UNCHECKABLE",
+                resolution_detail="Missing fetch_date or fresh_until in both "
+                                  "source file and trace-map metadata",
+            )
+            stale_sources.append(stale_entry)
+            emit_log(
+                "WARNING",
+                f"Source {src_file}: missing fetch_date or fresh_until — "
+                f"cannot verify freshness, treated as stale",
+            )
+            continue
+
+        # Parse dates
+        try:
+            fetch_dt = parse_iso_date(fetch_date_str)
+            fresh_until_dt = parse_iso_date(fresh_until_str)
+        except ValueError as e:
+            stale_entry = _build_stale_entry(
+                src_file=src_file,
+                src_meta=src_meta,
+                fetch_date=fetch_date_str,
+                fresh_until=fresh_until_str,
+                data_type=data_type or "unknown",
+                sla_class=sla_class or "UNKNOWN",
+                actual_age_days=None,
+                max_age_days=None,
+                resolution="DATE_PARSE_ERROR",
+                resolution_detail=str(e),
+            )
+            stale_sources.append(stale_entry)
+            emit_log("WARNING", f"Source {src_file}: date parse error — {e}")
+            continue
+
+        max_age = get_sla_max_age(data_type)
+        actual_age = days_between(fetch_dt, now)
+        is_stale = now >= fresh_until_dt
+
+        if is_stale:
+            resolution = "STALE"
+            resolution_detail = f"Actual age: {actual_age}d, SLA max: {max_age}d"
+
+            # Check if re-fetch was attempted and failed
+            if src_meta.get("re_fetch_attempted") and src_meta.get("re_fetch_success") is False:
+                resolution = "STALE_UNRECOVERABLE"
+                resolution_detail = (
+                    f"Re-fetch attempted and failed. "
+                    f"Actual age: {actual_age}d, SLA max: {max_age}d"
+                )
+
+            stale_entry = _build_stale_entry(
+                src_file=src_file,
+                src_meta=src_meta,
+                fetch_date=fetch_date_str,
+                fresh_until=fresh_until_str,
+                data_type=data_type or "unknown",
+                sla_class=sla_class or "UNKNOWN",
+                actual_age_days=actual_age,
+                max_age_days=max_age,
+                resolution=resolution,
+                resolution_detail=resolution_detail,
+            )
+            stale_sources.append(stale_entry)
+            emit_log(
+                "WARNING",
+                f"STALE: {src_file} "
+                f"(actual: {actual_age}d, SLA: {max_age}d, "
+                f"resolution: {resolution})",
+            )
+
+    stale_count = len(stale_sources)
+    stale_ratio = round(stale_count / total_unique_sources, 4) if total_unique_sources > 0 else 0.0
+
+    emit_log(
+        "INFO",
+        f"Staleness: {stale_count}/{total_unique_sources} sources stale "
+        f"(ratio: {stale_ratio})",
+    )
+
+    return StalenessResult(
+        total_unique_sources=total_unique_sources,
+        stale_ratio=stale_ratio,
+        stale_sources=stale_sources,
+        unique_source_files=unique_source_files,
+        source_to_claims=source_to_claims,
+    )
+
+
+def _build_stale_entry(
+    src_file: str,
+    src_meta: Dict[str, Any],
+    fetch_date: str,
+    fresh_until: str,
+    data_type: str,
+    sla_class: str,
+    actual_age_days: Optional[int],
+    max_age_days: Optional[int],
+    resolution: str,
+    resolution_detail: str = "",
+) -> Dict[str, Any]:
+    """Build a stale entry dict with all required fields."""
+    return {
+        "source_file": src_file,
+        "data_type": data_type,
+        "sla_class": sla_class,
+        "fetch_date": fetch_date,
+        "fresh_until": fresh_until,
+        "max_age_days": max_age_days,
+        "actual_age_days": actual_age_days,
+        "staleness_action": get_staleness_action(data_type),
+        "re_fetch_priority": get_re_fetch_priority(data_type),
+        "resolution": resolution,
+        "resolution_detail": resolution_detail,
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 3: CLAIM-WEIGHTED STALENESS CHECK (The Eye Security Bug Fix)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def compute_claim_weighted_staleness(
+    stale_sources: List[Dict[str, Any]],
+    source_to_claims: Dict[str, List[int]],
+    total_claims: int,
+) -> Tuple[float, Optional[str], Set[int]]:
+    """
+    Compute claim-weighted staleness ratio (§4.2 Step 3).
+
+    A single stale source supplying >20% of claims blocks the canvas
+    regardless of source-count ratio. This is the Eye Security bug fix:
+    a vacuum count was 10 at fetch time but 28 on the live page, and one
+    stale source poisoned 5/12 claims.
+
+    Returns:
+      (claim_weighted_stale_ratio, blocking_source_or_None, stale_claims_set)
+    """
+    stale_claims_set: Set[int] = set()
+    blocking_source: Optional[str] = None
+
+    for stale_entry in stale_sources:
+        src_file = stale_entry["source_file"]
+        ref_claims = source_to_claims.get(src_file, [])
+        claim_count = len(ref_claims)
+        claim_ratio = claim_count / total_claims if total_claims > 0 else 0.0
+
+        # Track which claims depend on stale data
+        for ci in ref_claims:
+            stale_claims_set.add(ci)
+
+        # Decorate the stale entry with claim-weight info
+        stale_entry["claims_referencing"] = claim_count
+        stale_entry["claim_ratio"] = round(claim_ratio, 4)
+
+        if claim_ratio > CLAIM_WEIGHTED_BLOCK_THRESHOLD:
+            blocking_source = src_file
+            pct = round(claim_ratio * 100, 1)
+            emit_log(
+                "WARNING",
+                f"BLOCKING: Stale source '{src_file}' supplies {pct}% of claims "
+                f"(>{CLAIM_WEIGHTED_BLOCK_THRESHOLD * 100:.0f}%)",
+            )
+
+    claim_weighted_stale_ratio = round(
+        len(stale_claims_set) / total_claims if total_claims > 0 else 0.0,
+        4,
+    )
+
+    if blocking_source:
+        emit_log(
+            "WARNING",
+            f"Claim-weighted ratio: {claim_weighted_stale_ratio} "
+            f"(BLOCKED by '{blocking_source}')",
+        )
+    else:
+        emit_log("INFO", f"Claim-weighted staleness ratio: {claim_weighted_stale_ratio}")
+
+    return claim_weighted_stale_ratio, blocking_source, stale_claims_set
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 4: BLOCK-CLASS HARD ENFORCEMENT
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def enforce_block_class(
+    stale_sources: List[Dict[str, Any]],
+    force: bool,
+    niche_id: str,
+) -> Tuple[int, bool, List[str]]:
+    """
+    Enforce BLOCK-class hard enforcement (§4.2 Step 4).
+
+    BLOCK-class data types (INTENT, JOB, HIRING) have HARD enforcement:
+    if stale AND re-fetch was attempted and failed → STALE_UNRECOVERABLE.
+    Without --force, this blocks the canvas.
+
+    If --force is set, logs a waiver event to PIPELINE_CHECKPOINTS.yaml
+    and returns as non-blocking.
+
+    Returns:
+      (block_violations_count, has_unrecoverable, block_class_sources_list)
+    """
+    block_violations = 0
+    has_unrecoverable = False
+    block_class_sources: List[str] = []
+
+    for stale_entry in stale_sources:
+        sla_class = stale_entry.get("sla_class", "")
+        if sla_class in BLOCK_CLASS_DATA_TYPES:
+            block_violations += 1
+            block_class_sources.append(stale_entry["source_file"])
+
+            # Block on ANY stale BLOCK-class source, not just unrecoverable (P1-13)
+            has_unrecoverable = True
+            emit_log(
+                "WARNING",
+                f"BLOCK-CLASS stale: {stale_entry['source_file']} "
+                f"(class: {sla_class}, resolution: {stale_entry.get('resolution', 'STALE')})",
+            )
+
+    if block_violations > 0:
+        emit_log(
+            "INFO",
+            f"BLOCK-class violations: {block_violations} source(s): "
+            f"{block_class_sources}",
+        )
+
+    # If --force, log waiver to PIPELINE_CHECKPOINTS.yaml
+    if force and block_violations > 0:
+        _log_block_class_waiver(niche_id, block_class_sources)
+
+    return block_violations, has_unrecoverable, block_class_sources
+
+
+def _log_block_class_waiver(niche_id: str, sources: List[str]) -> None:
+    """Log a BLOCK_CLASS_OVERRIDE waiver to PIPELINE_CHECKPOINTS.yaml.
+
+    Raises SystemExit(INTERNAL_ERROR) on write failure — the override MUST be logged.
+    Deduplicates: identical waivers (same niche_id + waiver_type + sources) are
+    silently skipped on retry.
+    """
+    waiver_entry = {
+        "timestamp": now_utc().isoformat(),
+        "niche_id": niche_id,
+        "waiver_type": "BLOCK_CLASS_OVERRIDE",
+        "sources": sources,
+        "reason": "--force flag",
+    }
+
+    checkpoints_path = find_pipeline_checkpoints()
+    try:
+        checkpoints_data = load_yaml_safe(checkpoints_path)
+        if checkpoints_data is None:
+            checkpoints_data = {"waivers": []}
+        if "waivers" not in checkpoints_data or not isinstance(checkpoints_data["waivers"], list):
+            checkpoints_data["waivers"] = []
+
+        # Dedup: skip if identical waiver already exists (P0-6 fix)
+        for existing in checkpoints_data["waivers"]:
+            if (isinstance(existing, dict)
+                    and existing.get("niche_id") == niche_id
+                    and existing.get("waiver_type") == "BLOCK_CLASS_OVERRIDE"
+                    and existing.get("sources") == sources):
+                emit_log("INFO", f"Duplicate waiver suppressed for {niche_id}")
+                return
+
+        checkpoints_data["waivers"].append(waiver_entry)
+        write_yaml_atomic(checkpoints_data, checkpoints_path)
+        emit_log(
+            "WARNING",
+            f"BLOCK-class override waiver logged to {checkpoints_path}",
+        )
+    except (ValueError, OSError, TypeError) as e:
+        emit_log(
+            "FATAL",
+            f"Cannot log waiver --force override to {checkpoints_path}: {e}",
+        )
+        emit_log(
+            "FATAL",
+            "Override NOT applied. Fix the underlying issue and re-run.",
+        )
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": f"Failed to log BLOCK-class waiver: {e}",
+            "waiver_entry": waiver_entry,
+        })
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 5: RETROACTIVE FRESHNESS CHECK (§6.5)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def retroactive_check(
+    claims: List[Dict[str, Any]],
+    unique_source_files: Dict[str, Dict[str, Any]],
+    trace_map_path: Path,
+    niche_id: str,
+) -> Tuple[int, List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """
+    Perform retroactive freshness check for HIGHEST-priority data types (§4.2 Step 5).
+
+    HIGHEST-priority data types (D-04 INTENT, D-05 JOB, D-12 HIRING) need
+    re-fetching at canvas finalization time to catch live-page changes that
+    occurred between fetch time and finalization (the Eye Security bug).
+
+    The script itself does NOT perform network I/O — it emits the list of URLs
+    that need checking. The calling agent performs re-fetches and writes a
+    retroactive-check-results.yaml file. On subsequent runs, this function reads
+    that file and compares content hashes.
+
+    When a hash mismatch is found, all claims referencing that source are
+    downgraded to grade [H] (P1-14 fix).
+
+    Returns:
+      (retroactive_mismatches_count, retroactive_urls_to_check_list, downgraded_claims_list)
+    """
+    # Collect URLs that need retroactive checking
+    seen_url_refs: Dict[str, Dict[str, Any]] = {}  # url -> metadata
+
+    for claim in claims:
+        for src in claim.get("sources", []):
+            src_file = src.get("source_file", "")
+            src_meta = unique_source_files.get(src_file, {})
+            data_type = src_meta.get("data_type", "")
+
+            if is_highest_priority(data_type):
+                url = src.get("original_url") or src.get("url") or ""
+                if url and url not in seen_url_refs:
+                    seen_url_refs[url] = {
+                        "source_file": src_file,
+                        "data_type": data_type,
+                        "url": url,
+                        "claim_id": claim.get("claim_id", "unknown"),
+                        "fetch_date": src.get("fetch_date", "unknown"),
+                    }
+
+    retroactive_urls_to_check = list(seen_url_refs.values())
+
+    if retroactive_urls_to_check:
+        emit_log(
+            "INFO",
+            f"Retroactive check: {len(retroactive_urls_to_check)} URLs "
+            f"need re-fetching (HIGHEST-priority data types)",
+        )
+        for entry in retroactive_urls_to_check:
+            emit_log(
+                "INFO",
+                f"  RETROACTIVE_CHECK: Re-fetch {entry['url']} and compare hash",
+            )
+    else:
+        emit_log("INFO", "Retroactive check: no HIGHEST-priority URLs to re-fetch")
+
+    # Check for prior retroactive check results
+    retroactive_mismatches = 0
+    downgraded_claims: List[Dict[str, Any]] = []
+    retroactive_results_path = trace_map_path.parent / RETROACTIVE_CHECK_FILENAME
+
+    # Build source_file -> claim_ids mapping for grade downgrade lookup (P1-14)
+    source_to_claim_ids: Dict[str, List[str]] = {}
+    for claim in claims:
+        claim_id = claim.get("claim_id", "unknown")
+        for src in claim.get("sources", []):
+            src_file = src.get("source_file", "")
+            if src_file:
+                if src_file not in source_to_claim_ids:
+                    source_to_claim_ids[src_file] = []
+                source_to_claim_ids[src_file].append(claim_id)
+
+    if retroactive_results_path.exists():
+        emit_log("INFO", f"Found prior retroactive check results: {retroactive_results_path}")
+        try:
+            retro_data = load_yaml_safe(retroactive_results_path)
+            if retro_data and isinstance(retro_data, dict):
+                # Validate niche_id matches current niche (P1-8 fix)
+                stored_niche = retro_data.get("niche_id")
+                if stored_niche and stored_niche != niche_id:
+                    emit_log(
+                        "WARNING",
+                        f"Retroactive results for {stored_niche} do not match "
+                        f"current niche {niche_id}. Ignoring.",
+                    )
+                else:
+                    results_list = retro_data.get("results", [])
+                    if not isinstance(results_list, list):
+                        results_list = []
+
+                    for result_entry in results_list:
+                        if not isinstance(result_entry, dict):
+                            continue
+                        if result_entry.get("mismatch", False):
+                            retroactive_mismatches += 1
+                            src_file = result_entry.get("source_file", "")
+                            original_url = result_entry.get("original_url", "?")
+                            emit_log(
+                                "WARNING",
+                                f"VERIFIED_STALE: {original_url} "
+                                f"— content hash changed since "
+                                f"{result_entry.get('original_fetch_date', '?')}",
+                            )
+
+                            # Downgrade all claims referencing this source to [H] (P1-14)
+                            affected_claim_ids = source_to_claim_ids.get(src_file, [])
+                            for cid in affected_claim_ids:
+                                downgraded_claims.append({
+                                    "claim_id": cid,
+                                    "source_file": src_file,
+                                    "original_url": original_url,
+                                    "grade": "[H]",
+                                    "reason": "Retroactive hash mismatch — source content changed",
+                                })
+        except (ValueError, OSError, TypeError) as e:
+            emit_log("WARNING", f"Could not read retroactive-check-results.yaml: {e}")
+
+    if downgraded_claims:
+        emit_log(
+            "WARNING",
+            f"Downgraded {len(downgraded_claims)} claim(s) to [H] due to "
+            f"{retroactive_mismatches} retroactive hash mismatch(es)",
+        )
+
+    return retroactive_mismatches, retroactive_urls_to_check, downgraded_claims
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STEP 6: VERDICT ASSEMBLY
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def assemble_verdict(
+    block_class_unrecoverable: bool,
+    force: bool,
+    claim_weighted_blocked: bool,
+    stale_ratio: float,
+    stale_sources: List[Dict[str, Any]],
+) -> Tuple[str, ExitCode, bool]:
+    """
+    Assemble the final verdict per priority-ordered rules (§4.2 Step 6).
+
+    Rules (in priority order):
+      1. BLOCK-class unrecoverable AND --force not set → BLOCKED (exit 1)
+      2. Claim-weighted blocking source (>20%) → BLOCKED (exit 1)
+      3. Source-count stale_ratio > 0.10 → BLOCKED (exit 1)
+      4. stale_ratio > 0 AND ≤ 0.10 → PASS_WITH_WARNING (exit 2)
+      5. stale_ratio == 0 → PASS (exit 0)
+
+    Returns:
+      (verdict_string, exit_code, blocked_bool)
+    """
+    # Rule 1: BLOCK-class enforcement
+    if block_class_unrecoverable and not force:
+        emit_log(
+            "ERROR",
+            "VERDICT: BLOCKED — BLOCK-class data stale and unrecoverable. "
+            "Use --force to override.",
+        )
+        return "BLOCKED", ExitCode.BLOCKED, True
+
+    # If --force overrode BLOCK-class, show a clear log
+    if force and block_class_unrecoverable:
+        emit_log(
+            "WARNING",
+            "BLOCK-class override active (--force). "
+            "Waiver logged to PIPELINE_CHECKPOINTS.yaml.",
+        )
+
+    # Rule 2: Claim-weighted blocking source
+    # NOTE: --force only overrides Rule 1 (BLOCK-class). It does NOT override
+    #       claim-weighted staleness. A single stale source that poisons >20%
+    #       of claims always blocks the canvas, per the Eye Security bug fix.
+    if claim_weighted_blocked:
+        emit_log(
+            "ERROR",
+            "VERDICT: BLOCKED — Single stale source supplies >20% of claims",
+        )
+        return "BLOCKED", ExitCode.BLOCKED, True
+
+    # Rule 3: Source-count stale ratio > 10%
+    if stale_ratio > STALE_RATIO_BLOCK_THRESHOLD:
+        emit_log(
+            "ERROR",
+            f"VERDICT: BLOCKED — stale_ratio {stale_ratio} > "
+            f"{STALE_RATIO_BLOCK_THRESHOLD} threshold",
+        )
+        return "BLOCKED", ExitCode.BLOCKED, True
+
+    # Rule 4: stale_ratio > 0 and ≤ 10%
+    if stale_ratio > 0:
+        # If --force was used, always surface it
+        extra = " (BLOCK-class override via --force)" if force else ""
+        emit_log(
+            "WARNING",
+            f"VERDICT: PASS_WITH_WARNINGS — stale_ratio {stale_ratio} ≤ "
+            f"{STALE_RATIO_BLOCK_THRESHOLD}{extra}",
+        )
+        return "PASS_WITH_WARNINGS", ExitCode.WARNING, False
+
+    # Rule 5: No stale sources — single log line, never dual-emit (fix #54)
+    if force:
+        emit_log("WARNING", f"VERDICT: PASS (--force had no effect, no BLOCK-class violations)")
+    else:
+        emit_log("INFO", "VERDICT: PASS — all sources fresh")
+    return "PASS", ExitCode.SUCCESS, False
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def main() -> None:
+    """Main entry point."""
+    # ── Parse arguments ──────────────────────────────────────────────────────
+    args = sys.argv[1:]
+
+    if "--help" in args or "-h" in args:
+        print_help()
+        sys.exit(0)
+
+    force = "--force" in args
+    if force:
+        args.remove("--force")
+
+    dry_run = "--dry-run" in args
+    if dry_run:
+        args.remove("--dry-run")
+
+    # ── Extract --quiet / --agent-mode ─────────────────────────────────────
+    agent_mode = "--agent-mode" in args
+    if agent_mode:
+        args.remove("--agent-mode")
+        set_agent_mode(True)
+    quiet_mode = "--quiet" in args
+    if quiet_mode:
+        args.remove("--quiet")
+        set_quiet_mode(True)
+
+    if not args:
+        emit_log("ERROR", "Usage: ./freshness-audit NICHE_ID [--force] [--dry-run]")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "NICHE_ID argument is required",
+            "usage": "./freshness-audit NICHE_ID [--force] [--dry-run]",
+        })
+
+    niche_id = args[0]
+
+    # ── Validate NICHE_ID and directory ─────────────────────────────────────
+    try:
+        niche_dir = resolve_niche_dir(niche_id)
+    except ValueError as e:
+        emit_result(ExitCode.INVALID_INPUT, {"error": str(e)})
+
+    if not niche_dir.exists():
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": f"Niche directory not found: {niche_dir}",
+        })
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # STEP 1: Load and Validate Trace Map
+    # ═════════════════════════════════════════════════════════════════════════
+
+    trace_map_path = find_trace_map(niche_id)
+    emit_log("INFO", f"Loading trace-map: {trace_map_path}")
+
+    try:
+        trace_data = load_yaml_safe(trace_map_path)
+    except ValueError as e:
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": f"trace-map.yaml corrupted: {e}",
+            "trace_map_path": repo_relative_path(trace_map_path),
+        })
+
+    if trace_data is None:
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "trace-map.yaml not found. Has the canvas been authored?",
+            "trace_map_path": repo_relative_path(trace_map_path),
+        })
+
+    try:
+        claims = validate_trace_map(trace_data)
+    except ValueError as e:
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": str(e),
+            "trace_map_path": repo_relative_path(trace_map_path),
+        })
+
+    total_claims = len(claims)
+    emit_log("INFO", f"Loaded {total_claims} claims from trace-map")
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # STEP 2: Source-Count-Based Staleness Check
+    # ═════════════════════════════════════════════════════════════════════════
+
+    (
+        total_unique_sources,
+        stale_ratio,
+        stale_sources,
+        unique_source_files,
+        source_to_claims,
+    ) = compute_source_count_staleness(claims, niche_id, dry_run)
+
+    stale_count = len(stale_sources)
+
+    # ── Perform retroactive check early (needed for dry-run output) ────────
+    retroactive_mismatches, retroactive_urls_to_check, downgraded_claims = retroactive_check(
+        claims, unique_source_files, trace_map_path, niche_id,
+    )
+
+    if dry_run:
+        # In dry-run mode, report what would happen and exit cleanly
+        # Include retroactive URLs so operators can see what would be checked.
+        retroactive_urls = [
+            {
+                "url": e["url"],
+                "data_type": e["data_type"],
+                "source_file": e["source_file"],
+            }
+            for e in retroactive_urls_to_check
+        ]
+        stale_summary = {
+            "verdict": "DRY_RUN",
+            "niche_id": niche_id,
+            "total_sources": total_unique_sources,
+            "stale_sources": stale_count,
+            "stale_ratio": stale_ratio,
+            "total_claims": total_claims,
+            "retroactive_urls_to_check": retroactive_urls,
+            "dry_run": True,
+            "message": "Dry run complete. Remove --dry-run to perform actual audit.",
+            "stale_details": [
+                {
+                    "source_file": s["source_file"],
+                    "data_type": s["data_type"],
+                    "sla_class": s["sla_class"],
+                    "resolution": s.get("resolution", "PENDING"),
+                }
+                for s in stale_sources
+            ],
+        }
+        emit_result(ExitCode.SUCCESS, stale_summary)
+        return None  # emit_result calls sys.exit — unreachable, marks intent
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # STEP 3: Claim-Weighted Staleness Check
+    # ═════════════════════════════════════════════════════════════════════════
+
+    claim_weighted_stale_ratio, blocking_source, _ = compute_claim_weighted_staleness(
+        stale_sources, source_to_claims, total_claims,
+    )
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # STEP 4: BLOCK-Class Hard Enforcement
+    # ═════════════════════════════════════════════════════════════════════════
+
+    block_violations, block_unrecoverable, block_class_sources = enforce_block_class(
+        stale_sources, force, niche_id,
+    )
+
+    # ═════════════════════════════════════════════════════════════════════════
+    # STEP 6: Verdict Assembly (STEP 5 retroactive check already done above)
+    # ═════════════════════════════════════════════════════════════════════════
+
+    verdict, exit_code, blocked = assemble_verdict(
+        block_class_unrecoverable=block_unrecoverable,
+        force=force,
+        claim_weighted_blocked=blocking_source is not None,
+        stale_ratio=stale_ratio,
+        stale_sources=stale_sources,
+    )
+
+    # ── Build output ────────────────────────────────────────────────────────
+
+    # Build stale_details (stripped of internal fields, ready for public output)
+    stale_details = []
+    for entry in stale_sources:
+        stale_details.append({
+            "source_file": entry["source_file"],
+            "data_type": entry["data_type"],
+            "sla_class": entry["sla_class"],
+            "fetch_date": entry["fetch_date"],
+            "fresh_until": entry["fresh_until"],
+            "max_age_days": entry.get("max_age_days"),
+            "actual_age_days": entry.get("actual_age_days"),
+            "staleness_action": entry.get("staleness_action", "RE_FETCH"),
+            "resolution": entry.get("resolution", "STALE"),
+            "claims_referencing": entry.get("claims_referencing", 0),
+            "claim_ratio": entry.get("claim_ratio", 0.0),
+        })
+
+    # Build retroactive URL list for output
+    retroactive_urls = [
+        {
+            "url": e["url"],
+            "data_type": e["data_type"],
+            "source_file": e["source_file"],
+            "claim_id": e["claim_id"],
+        }
+        for e in retroactive_urls_to_check
+    ]
+
+    output: Dict[str, Any] = {
+        "verdict": verdict,
+        "niche_id": niche_id,
+        "total_sources": total_unique_sources,
+        "stale_sources": stale_count,
+        "stale_ratio": stale_ratio,
+        "claim_weighted_stale_ratio": claim_weighted_stale_ratio,
+        "claim_weighted_blocked": blocking_source is not None,
+        "claim_weighted_blocking_source": blocking_source,
+        "block_class_violations": block_violations,
+        "block_class_unrecoverable": block_unrecoverable,
+        "block_class_sources": block_class_sources,
+        "retroactive_mismatches": retroactive_mismatches,
+        "retroactive_urls_to_check": retroactive_urls,
+        "downgraded_claims": downgraded_claims,
+        "blocked": blocked,
+        "stale_details": stale_details,
+        "force_used": force,
+        "dry_run": dry_run,
+        "total_claims": total_claims,
+    }
+
+    emit_result(exit_code, output)
+
+
+if __name__ == "__main__":
+    main()

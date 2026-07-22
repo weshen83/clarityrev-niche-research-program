@@ -1,0 +1,30 @@
+competitor_name: BadCorp
+fetch_date: '2026-07-01'
+reviews:
+- cons: Everything
+  date: '2026-06-15'
+  pros: Nothing
+  rating: 6
+  review_id: rev_001
+  reviewer_company_size: 10-50
+  reviewer_role: Dev
+  source: g2
+  source_url: https://g2.com/bad/1
+  title: Meh
+  verbatim_quotes:
+  - Bad
+sources:
+  capterra:
+    count: 5
+    url: https://capterra.com/bad
+  g2:
+    count: 10
+    url: https://g2.com/bad
+  reddit:
+    count: 2
+    subreddits:
+    - r/test
+theme_analysis:
+  top_complaint_themes: []
+  top_praise_themes: []
+total_reviews: 99

@@ -1,0 +1,14 @@
+claims:
+- claim_id: C-001
+  claim_text: Price comparison
+  sources:
+  - source_file: N-001/00-pricing/source-0.yaml
+    fetch_date: "2026-07-20"
+    freshness_status: FRESH
+    fresh_until: "2026-12-31"
+    data_type: competitor_pricing
+  - source_file: N-001/00-pricing/source-missing.yaml
+    fetch_date: "2026-01-01"
+    freshness_status: STALE
+    fresh_until: "2026-01-15"
+    data_type: competitor_pricing

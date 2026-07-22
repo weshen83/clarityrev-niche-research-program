@@ -1,0 +1,4 @@
+blocked_hosts:
+  - host: "firecrawl.dev"
+    blocked_until: "2026-12-31"
+    reason: "Test block"

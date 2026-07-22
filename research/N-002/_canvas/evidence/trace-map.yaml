@@ -1,0 +1,81 @@
+claims:
+- claim_id: C-001
+  claim_text: Fresh claim 0
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-0.yaml
+- claim_id: C-002
+  claim_text: Fresh claim 1
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-1.yaml
+- claim_id: C-003
+  claim_text: Fresh claim 2
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-2.yaml
+- claim_id: C-004
+  claim_text: Fresh claim 3
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-3.yaml
+- claim_id: C-005
+  claim_text: Fresh claim 4
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-4.yaml
+- claim_id: C-006
+  claim_text: Fresh claim 5
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-5.yaml
+- claim_id: C-007
+  claim_text: Fresh claim 6
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-6.yaml
+- claim_id: C-008
+  claim_text: Fresh claim 7
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-7.yaml
+- claim_id: C-009
+  claim_text: Fresh claim 8
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-07-20'
+    fresh_until: '2026-12-31'
+    freshness_status: FRESH
+    source_file: N-002/00-mixed/fresh-8.yaml
+- claim_id: C-010
+  claim_text: Stale claim
+  sources:
+  - data_type: technographics
+    fetch_date: '2026-01-01'
+    fresh_until: '2026-01-15'
+    freshness_status: STALE
+    source_file: N-002/00-mixed/stale.yaml

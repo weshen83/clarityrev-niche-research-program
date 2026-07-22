@@ -1,0 +1,25 @@
+competitor_id: comp_bad_v1
+fetch_date: '2026-07-01'
+fetch_method: INVALID_METHOD
+fresh_until: '2026-09-29'
+freshness_sla: 90d
+freshness_status: FRESH
+profile:
+  delivery_model: INVALID_MODEL
+  estimated_customers: 100+
+  funding: Unknown
+  gtm_motion: Bad value
+  positioning_headline: Test
+  pricing: []
+  review_summary:
+    avg_rating: 0
+    sources: []
+    top_complaint: ''
+    top_praise: ''
+    total_reviews_analyzed: 0
+  strengths: []
+  tech_stack: []
+  vulnerabilities: []
+  weaknesses: []
+source_urls: []
+url: not-a-url

@@ -1,0 +1,15 @@
+# FRESHNESS_VIOLATION_LOG.yaml — Append-only freshness violation log
+# Schema per entry:
+#   timestamp: ISO 8601
+#   niche_id: "N-XXX"
+#   data_type: from freshness SLA table (D-01 through D-15)
+#   source_file: path to the stale source file
+#   fetch_date: original fetch date
+#   sla_max_age_days: from SLA table
+#   actual_age_days: current age at detection
+#   violation_type: STALE | EXPIRED
+#   resolution: RE_FETCHED | DEMOTED | BLOCKED | ACCEPTED
+#   resolved_by: agent or "manual"
+#   notes: optional
+
+violations: []
