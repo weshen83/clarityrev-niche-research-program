@@ -1,0 +1,170 @@
+# schemas/trace-map-schema.yaml — BINDING schema for evidence/trace-map.yaml
+#
+# Status: BINDING. Every Niche Canvas agent MUST produce a trace-map.yaml
+# conforming to this schema. Schema violations are caught before the canvas
+# enters scoring (see Part 3 Quality Gates in NICHE-METHODOLOGY.md).
+#
+# Source: NICHE-METHODOLOGY.md §6.2, DATA-OPERATIONS-ARCHITECTURE.md §6.3
+
+schema:
+  name: "Evidence Trace-Map Schema"
+  version: "1.0"
+  source: "NICHE-METHODOLOGY.md §6.2, DATA-OPERATIONS-ARCHITECTURE.md §6.3"
+
+fields:
+  - field: niche_id
+    type: string
+    required: true
+    pattern: "^(N-\\d{3}|CAL-[AB])$"
+    description: "Niche identifier this trace-map belongs to"
+
+  - field: generated_by
+    type: string
+    required: true
+    description: "Agent identifier that authored this trace-map"
+
+  - field: generated_at
+    type: string
+    format: ISO 8601
+    required: true
+    description: "Timestamp when trace-map was generated"
+
+  - field: methodology_version
+    type: string
+    required: true
+    description: "Git commit hash of NICHE-METHODOLOGY.md used"
+
+  - field: claims
+    type: list
+    required: true
+    min_items: 1
+    item_schema:
+      - field: claim_id
+        type: string
+        required: true
+        pattern: "^[A-Z]-\\d{3}-§\\d+(\\.\\d+)*-claim-\\d+$"
+        description: "Unique claim identifier, e.g., N-001-§3.2-claim-003"
+
+      - field: claim_text
+        type: string
+        required: true
+        description: "The exact text of the claim as it appears in the canvas"
+
+      - field: canvas_section
+        type: string
+        required: true
+        description: "Which section of the canvas this claim appears in (e.g., §3.2)"
+
+      - field: evidence_grade
+        type: string
+        required: true
+        enum: ["[P]", "[E]", "[H]", "[S]"]
+        description: "Evidence grade assigned by the DETERMINISTIC grade engine (§6.2)"
+
+      - field: grade_criteria
+        type: dict
+        required: true
+        children:
+          - field: c1_independent_sources
+            type: boolean
+            required: true
+          - field: c2_verified_source
+            type: boolean
+            required: true
+          - field: c3_within_sla
+            type: boolean
+            required: true
+          - field: c4_source_urls
+            type: boolean
+            required: true
+
+      - field: sources
+        type: list
+        required: true
+        min_items: 1
+        item_schema:
+          - field: source_file
+            type: string
+            required: true
+            description: "Path to structured data file (relative to niche-program/research/)"
+
+          - field: source_field
+            type: string
+            required: true
+            description: "Dotted path to the specific field in the source file"
+
+          - field: source_url
+            type: string
+            format: URL
+            required: true
+            description: "Original URL from which data was fetched"
+
+          - field: originating_source
+            type: string
+            required: false
+            description: "For [P] claims: the root source both URLs trace back to. If two URLs cite the same underlying study/survey/report, they are NOT independent and this field MUST be populated."
+
+          - field: fetch_date
+            type: string
+            format: ISO 8601
+            required: true
+
+          - field: fetch_tool
+            type: string
+            required: true
+            enum: ["firecrawl_search", "firecrawl_scrape", "dataforseo", "openregistry_mcp", "reddit_research_mcp", "context7_mcp", "gdelt_api", "eurostat_api", "oecd_api", "public_ats_api", "manual"]
+
+          - field: content_hash
+            type: string
+            required: true
+            pattern: "^sha256:[a-f0-9]{64}$"
+            description: "SHA-256 hash of the fetched content"
+
+          - field: freshness_status
+            type: string
+            required: true
+            enum: ["FRESH", "STALE", "EXPIRED"]
+
+          - field: fresh_until
+            type: string
+            format: ISO 8601
+            required: true
+
+      - field: cross_source_agreement_pct
+        type: float
+        required: false
+        description: "For [P] claims with numerical values: percentage agreement between sources. Required if evidence_grade is [P] and claim contains a numerical value."
+
+  - field: independent_verification
+    type: dict
+    required: false
+    description: "Populated by the independent verifier agent (Mechanism 7)"
+    children:
+      - field: verifier_agent
+        type: string
+        required: true
+      - field: verification_date
+        type: string
+        format: ISO 8601
+        required: true
+      - field: urls_checked
+        type: integer
+        required: true
+      - field: hashes_match
+        type: integer
+        required: true
+      - field: hashes_mismatch
+        type: integer
+        required: true
+      - field: claim_support_verified
+        type: integer
+        required: true
+        description: "Number of checked URLs where the fetched content semantically supports the claim"
+      - field: claim_support_failed
+        type: integer
+        required: true
+        description: "Number of checked URLs where the fetched content does NOT support the claim"
+      - field: verdict
+        type: string
+        required: true
+        enum: ["PASS", "FLAGGED"]

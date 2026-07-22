@@ -32,9 +32,10 @@ This is the binding data operations specification for ClarityRev's 25-niche eval
 
 | Metric | Value |
 |---|---|
-| Firecrawl credits available | 100,000 |
-| Firecrawl per niche (DEEP depth) | ~132 credits (estimated — measure on calibration niche) |
-| Firecrawl for all 25 niches | ~3,300 credits (3.3% of budget) + 5,000 for 8-12 DEEP niches = ~4,300-6,300 total |
+| Firecrawl credits available | ~10,000 (verify exact balance with `firecrawl credit-usage`) |
+| Firecrawl per niche (DEEP depth) | ~132 credits (estimated — MEASURE on calibration niche) |
+| Max DEEP niches at 10K budget | ~50 (allows 25 DEEP + 25 STANDARD with buffer) |
+| Conservative budget for 25 niches | 25 × 132 × 1.3 (30% buffer) = ~4,300 credits |
 | Phase 0 calibration budget | 200 credits (one-time) |
 | DataForSEO credits available | $50 (~83,000 SERP checks) |
 | DataForSEO per niche (DEEP depth) | ~$0.04 |
@@ -50,7 +51,7 @@ This is the binding data operations specification for ClarityRev's 25-niche eval
 
 ### 1.3 Design Principles (Binding)
 
-1. **Paid-first: Firecrawl + DataForSEO as primary tools.** We have 100K Firecrawl credits and $50 DataForSEO credits — more than sufficient for 25 niches. Use these as the PRIMARY tools for all data gathering. Free tools are fallbacks only, used when: (a) Firecrawl/DataForSEO cannot access the data source (e.g., Reddit requires authenticated sessions), (b) a free tool is demonstrably superior at a specific task with verified evidence, or (c) the credit cost is disproportionate to the insight value and a free alternative produces equivalent output. Do NOT use free tools just because they're free.
+1. **Paid-first: Firecrawl + DataForSEO as primary tools.** We have ~10K Firecrawl credits and $50 DataForSEO credits — sufficient for 25 niches with conservative budgeting. Use these as the PRIMARY tools for all data gathering. Free tools are fallbacks only, used when: (a) Firecrawl/DataForSEO cannot access the data source (e.g., Reddit requires authenticated sessions), (b) a free tool is demonstrably superior at a specific task with verified evidence, or (c) the credit cost is disproportionate to the insight value and a free alternative produces equivalent output. Do NOT use free tools just because they're free.
 2. **Cache-idempotent.** Before any credit-consuming operation, check if fresh data already exists. No data is fetched twice within its freshness SLA. Every fetch is cacheable and reusable.
 3. **Schema-first structured outputs.** Raw fetched content goes to `.firecrawl/`. Structured, validated data goes to `niche-program/research/N-XXX/`. File names encode what the data IS (source, date, type).
 4. **Three-depth execution.** STANDARD depth for all 25 niches (fertility scoring). DEEP depth for niches that survive the fertility gate (projected: 8-12). FORENSIC depth only for LAUNCH PENDING niches (projected: 1-3). Depth determines how MUCH data we gather, not which tools we use — Firecrawl + DataForSEO are the primary tools at ALL depths.
@@ -430,7 +431,7 @@ All of the following must be true before Phase 1 begins on any niche:
 - [ ] Authenticated sessions: Reddit Research MCP returns valid results (official API, no auth required). G2 tested via public access (no account creation).
 - [ ] Fallback tools: ≥3 of 5 free tools verified as working
 - [ ] Concurrent test: 5 parallel Firecrawl requests complete successfully
-- [ ] Credit budget: Firecrawl >90,000 credits remaining, DataForSEO >$45 remaining
+- [ ] Credit budget: Firecrawl >9,000 credits remaining, DataForSEO >$45 remaining
 - [ ] Dead-host registry: initialized (empty, populated during pipeline per G-012)
 - [ ] _program/ directory: LEDGER.yaml, CREDIT_BUDGET.yaml, PIPELINE_CHECKPOINTS.yaml, CREDENTIALS.yaml created
 - [ ] SHARED/ directory: _REGISTRY.yaml initialized with empty index, benchmarks/ competitors/ triggers/ directories created
@@ -512,7 +513,7 @@ Credit gates fire BEFORE each phase, not after. This ensures credits are verifie
 
 | Gate | When | Budget Check | Action If Fail |
 |---|---|---|---|
-| **GATE-1→2** | Before Phase 2 starts | Firecrawl remaining ≥ 5,000 credits. DataForSEO ≥ $40 remaining. | Halt ALL niches. Raise credit alert. Do not proceed until credits are replenished or Wesley waives. |
+| **GATE-1→2** | Before Phase 2 starts | Firecrawl remaining ≥ 2,000 credits. DataForSEO ≥ $40 remaining. | Halt ALL niches. Raise credit alert. Do not proceed until credits are replenished or Wesley waives. |
 | **GATE-2→3** | Before Phase 3 starts | Firecrawl remaining ≥ 2,000 credits. Per-niche Phase 1+2 actual ≤ 150% of estimate (~200 credits). | Halt THIS niche. Log overage cause. If 3+ niches exceed Phase 1+2 estimate, pause pipeline for methodology review. |
 | **GATE-3→4** | Before Phase 4 starts | Phase 3 credit consumption ≤ 30 credits. DataForSEO within $0.05 of estimate. | Log. Phase 3 is low-credit by design. Overage indicates re-fetching with stale cache — investigate cache layer. |
 | **GATE-FINAL** | Before canvas finalization | Per-niche total ≤ 200 credits Firecrawl, ≤ $0.10 DataForSEO (1.5x safety buffer over estimated ~132 credits). | Log final. If persistent overage across >3 niches, escalate to methodology review. Add niche to overage ledger. |
@@ -941,7 +942,7 @@ All depths use Firecrawl + DataForSEO as primary tools. Depth determines how MUC
 | **DEEP** | Niches that survive fertility gate (projected: 8-12) | ~132 credits | ~$0.04 | Phases 1-4 — complete niche evaluation. 5-10 competitors, 20-50 reviews/competitor, full SERP/keyword profiling, backlink analysis |
 | **FORENSIC** | LAUNCH PENDING niches (projected: 1-3) | +200-400 credits | +$1.00-$2.00 | Full validation — full keyword gap analysis, complete backlink profile, monitor setup on competitor pricing, full review history, technographic deep-dive |
 
-> **⚠️ CREDIT RECONCILIATION NOTE (Audit Finding, 2026-07-23):** The §4 pipeline detail tables sum to ~132 credits for a full DEEP run. The original §8.1 estimate was ~500 credits — a 380% discrepancy. The pipeline detail tables (§4.1-4.4) are the source of truth until real-world measurements from the calibration niche and first 5 niches replace estimates with data. The discrepancy is explained by: (a) Phase header parentheticals were 2-4x their own detail table sums (now corrected), (b) several pipeline steps list "$0" cost but consume credits via Firecrawl /crawl page-level costs and /interact actions not individually costed in the pipeline steps, (c) retry overhead (§8.3), cross-niche bootstrap overhead, and cache-miss penalties on first runs are not included in per-step estimates. After the calibration niche is completed, replace ALL estimates with measured credit consumption and update §8.1 accordingly.
+> **⚠️ CREDIT RECONCILIATION NOTE (Audit Finding, 2026-07-23):** The §4 pipeline detail tables sum to ~132 credits for a full DEEP run. With ~10K Firecrawl credits available, this supports 25 DEEP niches with buffer (~4,300 credits conservative estimate). The pipeline detail tables (§4.1-4.4) are the source of truth until real-world measurements from the calibration niche and first 5 niches replace estimates with data. All credit numbers must be verified against actual balance. Calibration niche will produce MEASURED consumption to replace estimates.
 
 **BINDING RULE:** FORENSIC depth requires explicit approval + LAUNCH PENDING verdict. STANDARD depth is the default for all 25 niches. DEEP depth activates automatically when a niche passes the fertility gate.
 
@@ -977,7 +978,7 @@ All depths use Firecrawl + DataForSEO as primary tools. Depth determines how MUC
 5. **Firecrawl /monitor for recurring checks.** 1 credit per check vs. repeated /scrape calls. Set up once for competitor pricing, changelogs.
 6. **Firecrawl search-feedback for refunds.** First feedback per search ID refunds 1 credit (up to 100/day).
 7. **Firecrawl /interact with persistent profiles for authenticated content.** Create profiles once in Phase 0, reuse for all subsequent authenticated scraping. Saves re-authentication time and avoids repeated login patterns that trigger bot detection.
-8. **Firecrawl over free tools — always, unless free is better.** We have 100K credits. Spending 2 credits on a Firecrawl /search is NOT a reason to use a free alternative. Only use free tools when they produce BETTER data, not when they produce CHEAPER data.
+8. **Firecrawl over free tools — always, unless free is better.** We have ~10K credits. Spending 2 credits on a Firecrawl /search must be deliberate — check the conservative budget model before consuming. Only use free tools when they produce BETTER data, not when they produce CHEAPER data.
 
 ---
 
@@ -1161,8 +1162,8 @@ fi
 
 # 2. Check credit balance
 FIRECRAWL_BALANCE=$(grep firecrawl_remaining niche-program/research/_program/CREDIT_BUDGET.yaml | cut -d' ' -f2)
-if [ "$FIRECRAWL_BALANCE" -lt 2000 ]; then
-  echo "WARNING: Firecrawl balance below 2,000. Check before proceeding."
+if [ "$FIRECRAWL_BALANCE" -lt 500 ]; then
+  echo "WARNING: Firecrawl balance below 500. Check before proceeding."
 fi
 
 # 3. Check if host is on dead-host registry

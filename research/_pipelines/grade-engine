@@ -1,0 +1,242 @@
+#!/usr/bin/env python3
+"""
+grade-engine — Deterministic evidence grade assignment.
+
+Stripe API Design: this is a standalone, stateless function that takes
+claim+source data and returns a grade. It is invoked by a SEPARATE agent
+from the one that authored the claims. The authoring agent writes the
+trace-map; the grading agent reads it and assigns grades.
+
+This separation ensures the agent cannot self-grade its own fabrications.
+
+Grade assignment is a PURE FUNCTION of four binary criteria.
+No agent judgment. No "interpretation." No LLM call.
+If inputs are valid → output is deterministic (see truth table below).
+
+Usage:
+    # Single claim grade from CLI flags:
+    python3 grade-engine --c1 --c2 --c3 --c4
+
+    # Batch grade from trace-map YAML:
+    python3 grade-engine --file trace-map.yaml
+
+    # Batch grade from stdin:
+    cat trace-map.yaml | python3 grade-engine
+"""
+
+import argparse
+import sys
+import yaml
+from pathlib import Path
+
+
+def assign_grade(c1: bool, c2: bool, c3: bool, c4: bool) -> str:
+    """
+    Deterministic evidence grade assignment.
+
+    Priority-ordered, first-match-wins. See DATA-OPERATIONS-ARCHITECTURE.md §6.2
+    and the truth table below for the complete 16-combination mapping.
+
+    Criteria:
+        c1: Two or more independent sources support the claim
+        c2: At least one source is verifiable (source URL resolves, content hash matches)
+        c3: All sources are within freshness SLA
+        c4: Source URLs are documented for every factual sub-claim
+
+    Returns one of: [P], [E], [H], [S]
+
+    Truth table (16 combinations):
+    C1  C2  C3  C4  → Grade    Rationale
+    ─────────────────────────────────────
+    1   1   1   1   → [P]      Multiple independent, verified, fresh, traceable
+    0   1   1   1   → [E]      Single verified source OR multiple partial sources
+    0   0   1   1   → [H]      Sources exist but unverifiable (logical inference)
+    0   0   0   1   → [H]      Sources exist but stale AND unverifiable (demoted)
+    0   0   0   0   → [S]      No criteria met — speculative
+    1   0   1   1   → [H]      Multiple sources but none verifiable — cannot confirm
+    1   0   0   1   → [H]      Multiple sources, stale, unverifiable — weak hypothesis
+    1   0   0   0   → [S]      Multiple sources claimed but nothing verifiable
+    1   1   0   1   → [E]      Multiple independent, verified, but stale
+    1   1   0   0   → [H]      Multiple verified sources but stale AND no traceability
+    0   1   0   1   → [H]      Single verified source, stale, traceable
+    0   1   0   0   → [H]      Single verified source, stale, no traceability
+    0   0   1   0   → [S]      Fresh source but unverifiable and no URL traceability
+    1   0   1   0   → [H]      Multiple fresh sources claimed but unverifiable
+    0   1   1   0   → [H]      Single verified fresh source but no URL traceability
+    1   1   1   0   → [E]      Independent verified fresh sources but no URL traceability
+    """
+    # Priority 1: All criteria met — PROVEN
+    if c1 and c2 and c3 and c4:
+        return "[P]"
+
+    # Priority 2: Single verified source OR multiple partial sources — EVIDENCED
+    # c1=0, c2=1, c3=1, c4=1
+    if not c1 and c2 and c3 and c4:
+        return "[E]"
+
+    # Priority 3: Source cannot be verified — HYPOTHESIS
+    if not c2:
+        return "[H]"
+
+    # Priority 4: Source is stale — demoted to HYPOTHESIS
+    if not c3:
+        return "[H]"
+
+    # Priority 5: Source URLs not documented — SPECULATIVE
+    if not c4:
+        return "[S]"
+
+    # DEFAULT (should not be reached with valid binary inputs)
+    return "[S]"
+
+
+def check_content_independence(sources: list) -> tuple:
+    """
+    Content-origination independence check (B-P1-2).
+
+    When a claim has 2+ sources and would qualify for [P],
+    check the originating_source field. If both source URLs trace
+    back to the same originating source, they are NOT independent.
+
+    Returns: (is_independent: bool, annotation: str | None)
+    """
+    originating_sources = []
+    for src in sources:
+        orig = src.get("originating_source", "")
+        if orig and orig.strip():
+            originating_sources.append(orig.strip().lower())
+
+    if len(originating_sources) >= 2:
+        # Check if all populated originating sources are the same
+        unique_origins = set(originating_sources)
+        if len(unique_origins) == 1:
+            return (False, "MULTI_SOURCE_SAME_ORIGIN")
+        elif len(originating_sources) < len(sources):
+            # Some sources have no originating_source populated
+            return (False, "ORIGINATING_SOURCE_MISSING")
+
+    return (True, None)
+
+
+def process_claim(claim: dict) -> dict:
+    """
+    Process a single claim from a trace-map entry and return grade result.
+
+    The claim dict should contain grade_criteria (with c1-c4) and sources list.
+    """
+    criteria = claim.get("grade_criteria", {})
+    sources = claim.get("sources", [])
+
+    c1 = bool(criteria.get("c1_independent_sources", False))
+    c2 = bool(criteria.get("c2_verified_source", False))
+    c3 = bool(criteria.get("c3_within_sla", False))
+    c4 = bool(criteria.get("c4_source_urls", False))
+
+    grade = assign_grade(c1, c2, c3, c4)
+    annotations = []
+
+    # Content-origination independence check
+    # If grade would be [P] but sources share same origin, cap at [E]
+    if grade == "[P]" and len(sources) >= 2:
+        is_independent, annotation = check_content_independence(sources)
+        if not is_independent:
+            grade = "[E]"
+            annotations.append(annotation)
+
+    return {
+        "claim_id": claim.get("claim_id", "unknown"),
+        "assigned_grade": grade,
+        "annotations": annotations,
+        "criteria": {
+            "c1_independent_sources": c1,
+            "c2_verified_source": c2,
+            "c3_within_sla": c3,
+            "c4_source_urls": c4,
+        },
+    }
+
+
+def process_trace_map(trace_map: dict) -> list:
+    """Process all claims in a trace-map YAML document."""
+    results = []
+    for claim in trace_map.get("claims", []):
+        result = process_claim(claim)
+        results.append(result)
+    return results
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Deterministic evidence grade engine — no LLM, no agent judgment"
+    )
+    parser.add_argument(
+        "--c1", action="store_true",
+        help="Criterion 1: Two or more independent sources support the claim"
+    )
+    parser.add_argument(
+        "--c2", action="store_true",
+        help="Criterion 2: At least one source is verifiable (URL resolves, hash matches)"
+    )
+    parser.add_argument(
+        "--c3", action="store_true",
+        help="Criterion 3: All sources are within freshness SLA"
+    )
+    parser.add_argument(
+        "--c4", action="store_true",
+        help="Criterion 4: Source URLs are documented for every factual sub-claim"
+    )
+    parser.add_argument(
+        "--file", "-f", type=Path,
+        help="Path to trace-map YAML file for batch grading"
+    )
+    parser.add_argument(
+        "--json", "-j", action="store_true",
+        help="Output results as JSON (useful for programmatic consumption)"
+    )
+
+    args = parser.parse_args()
+
+    # Determine input mode: CLI flags, file, or stdin
+    if args.file:
+        # Batch mode from YAML file
+        with open(args.file, "r") as f:
+            trace_map = yaml.safe_load(f)
+        results = process_trace_map(trace_map)
+    elif any([args.c1, args.c2, args.c3, args.c4]):
+        # Single claim from CLI flags
+        grade = assign_grade(args.c1, args.c2, args.c3, args.c4)
+        results = [{
+            "claim_id": "cli-input",
+            "assigned_grade": grade,
+            "annotations": [],
+            "criteria": {
+                "c1_independent_sources": args.c1,
+                "c2_verified_source": args.c2,
+                "c3_within_sla": args.c3,
+                "c4_source_urls": args.c4,
+            },
+        }]
+    elif not sys.stdin.isatty():
+        # Batch mode from stdin
+        trace_map = yaml.safe_load(sys.stdin)
+        if trace_map is None:
+            # Empty pipe — nothing to grade
+            results = []
+        else:
+            results = process_trace_map(trace_map)
+    else:
+        parser.print_help()
+        sys.exit(0)
+
+    if args.json:
+        import json
+        output = json.dumps(results, indent=2)
+    else:
+        import json as _json
+        output = yaml.dump(results, default_flow_style=False)
+
+    print(output)
+
+
+if __name__ == "__main__":
+    main()

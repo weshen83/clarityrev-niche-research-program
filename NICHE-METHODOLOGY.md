@@ -67,13 +67,28 @@ Every factual claim in the Niche Canvas MUST be annotated with one of four grade
 | **HYPOTHESIS** | Logical inference from analogous markets; reasoned extrapolation; no direct data | `[H]` | Must be flagged for validation; cannot be used externally |
 | **SPECULATIVE** | Best guess; no supporting data; analogy from very different context | `[S]` | Must be explicitly marked; cannot inform build decisions |
 
-**Rule:** Any section with >50% SPECULATIVE content must be flagged as HIGH-UNCERTAINTY and the canvas scored at half weight.
+**Rule:** Any section with >50% SPECULATIVE content must be flagged as HIGH-UNCERTAINTY. The HIGH-UNCERTAINTY flag is REPORTED alongside the canvas — it does NOT penalize the score. Founders see: "Section X has HIGH-UNCERTAINTY — claims here are largely speculative; validate before building decisions depend on them."
 
 ---
 
 ## 2. PART 1: THE CANVAS — 15 SECTIONS
 
-Each Niche Canvas has exactly 15 sections, in order. Every section must be filled. Agents must not skip sections, combine sections, or reorder them.
+Each Niche Canvas has exactly 15 sections, in order. Every section must be ADDRESSED — not necessarily filled with data. If data is unavailable after a documented exhaustive search, write:
+
+> **SOURCE_UNAVAILABLE** — [What was sought] could not be obtained after [N] attempts across [tools used]. Last attempt: [date]. [Brief explanation of why data is unavailable for this niche].
+
+SOURCE_UNAVAILABLE is a VALID and COMPLETE response. It satisfies the completeness gate. It does NOT penalize the niche's score. It IS flagged in the evidence quality report so founders know this data point is missing.
+
+## ANTI-FABRICATION RULE (BINDING)
+
+Quantity thresholds (≥5 prospects, ≥3 competitors, ≥10 triggers) are TARGETS, not GATES. If only 2 competitors exist in a niche, writing SOURCE_UNAVAILABLE for the 3rd is CORRECT. Fabricating data to hit a threshold is a PROGRAM-INTEGRITY VIOLATION.
+
+Every quantity threshold in this document is hereby amended from "required" to "target":
+- OLD: "≥5 prospects required" → NEW: "Target: 5 prospects. If fewer exist, document all that do and mark the remainder SOURCE_UNAVAILABLE."
+- OLD: "≥3 competitors with pricing anchors" → NEW: "Target: 3 competitors with pricing anchors. If the niche has fewer, document all competitors and explain why (e.g., 'niche is dominated by 2 players')."
+- OLD: "≥10 trigger events" → NEW: "Target: 10 trigger events. Rank all discovered triggers by frequency × urgency. If fewer than 10 discovered, document the search methodology."
+
+Agents must not skip sections, combine sections, or reorder them.
 
 ---
 
@@ -390,7 +405,7 @@ For each direct competitor (minimum 3; if fewer explain why):
 
 - **Name, URL, funding/backing** — how well-resourced? `[P]`
 - **Pricing** — exact, with source verification: URL fetched, date fetched, exact text snippet confirming the price. If pricing is not publicly available, state "not publicly available" and cite closest signal (G2 reviewer mention, job posting referencing budget, case study citing cost). `[P]` if verified, `[E]` if from secondary source, `[H]` if estimated.
-- **Delivery model:** SOFTWARE (self-serve, near-zero marginal cost) / MANAGED (human-delivered, high marginal cost) / HYBRID. `[E]`. Determines price war risk: a software competitor can drop price to near-zero. A managed competitor has a cost floor. ClarityRev's AI-delivered model should have lower marginal cost than human-delivered competitors.
+- **Delivery model:** SOFTWARE (self-serve, near-zero marginal cost) / MANAGED (human-delivered, high marginal cost) / HYBRID. `[E]`. Determines price war risk: a software competitor can drop price to near-zero. A managed competitor has a cost floor. ClarityRev's AI-delivered model MUST have lower marginal cost than human-delivered competitors. This is a binding design constraint; if analysis shows marginal cost parity with human-delivered models, the service design must be restructured.
 - **GTM motion:** Self-serve/PLG, sales-led, partner-led, marketplace. `[E]`
 - **Estimated customer count / market presence:** With estimation method stated (LinkedIn employee count, G2 review volume, press mentions, conference presence). `[H]` at best.
 - **Positioning/headline** — verbatim from homepage. `[P]`
@@ -445,7 +460,7 @@ Structured table. Rows = capabilities that matter in this niche. Columns = compe
 
 What we CANNOT know from external research: product roadmaps, enterprise contract terms, actual churn rates, unit economics, upcoming features, partnership pipeline, win/loss rates, customer satisfaction beyond public reviews. This is not a weakness of the analysis — it's inherent to external competitive research. Listing limitations prevents overconfidence.
 
-**Done (minimum viable):** ≥3 direct competitors with verified pricing, strengths/weaknesses from ≥20 reviews, battlecards, and likely attacks with counters. "Why hasn't anyone done this yet?" diagnosed. DIY alternative analyzed with specific workflow. Positioning whitespace identified and verified. Feature matrix ≥80% complete. Competitive intelligence limitations stated.
+**Done (minimum viable):** Target: ≥3 direct competitors with verified pricing. If fewer exist in the niche, document all found and explain why. Strengths/weaknesses from ≥20 reviews (or all available if fewer than 20), battlecards, and likely attacks with counters. "Why hasn't anyone done this yet?" diagnosed. DIY alternative analyzed with specific workflow. Positioning whitespace identified and verified. Feature matrix ≥80% complete. Competitive intelligence limitations stated.
 
 **Excellent:** Winner-take-most assessment. Reverse analysis completed (what the #1 competitor says about us). Delivery model + marginal cost classified per competitor. Switching costs assessed. Displacement strategy chosen per competitor. Competitive dynamics plotted over 3 years. Battlecards are verbatim and usable on a call today. Pricing sources verified within 30 days with exact text snippets.
 
@@ -581,7 +596,7 @@ signal_event:
 
 #### 6A.0 Trigger Candidate Pool & ACH Selection
 
-Before selecting the top 5 triggers, the agent must consider ≥10 candidate triggers using Analysis of Competing Hypotheses (ACH). Each candidate is scored on four dimensions. Top 5 are selected for §6A.1. Bottom 5+ are documented with rejection rationale — this prevents black-box trigger selection and makes the agent's reasoning auditable.
+Before selecting the top 5 triggers, the agent MUST evaluate at least 10 candidate triggers as a target (if fewer exist in the niche, document all candidates found and explain why). Use Analysis of Competing Hypotheses (ACH). Each candidate is scored on four dimensions (Frequency, Urgency, Budget-Likelihood, Detectability). Top 5 are selected for §6A.1. Bottom 5+ are documented with rejection rationale — this prevents black-box trigger selection and makes the agent's reasoning auditable.
 
 | Candidate Trigger | Frequency (1-5) | Urgency (1-5) | Budget-Likelihood (1-5) | Detectability (1-5) | Composite | Selected? | Rejection Rationale |
 |---|---|---|---|---|---|---|---|
@@ -594,7 +609,7 @@ Before selecting the top 5 triggers, the agent must consider ≥10 candidate tri
 - Budget-Likelihood 1 = "no budget exists for this," 5 = "dedicated budget line item, approval authority clear"
 - Detectability 1 = "cannot be detected from external sources," 5 = "API-accessible, real-time, low false positive"
 
-**Rule:** If the agent cannot identify ≥10 candidate triggers, the niche may be too narrow or poorly understood — flag this in §15.
+**Rule:** Target: 10 candidate triggers. If the agent cannot identify at least 10 after exhaustive search, the niche may be too narrow or poorly understood — flag in §15 with documentation of search methodology and what was attempted.
 
 #### 6A.1 Primary Triggers
 
@@ -635,9 +650,9 @@ For each trigger:
 |---|---|---|---|---|---|---|
 | **TIER 1** | Directly indicates budget + authority | From §6.1 primary trigger list | Immediate personal outreach within 48 hours. Custom message referencing the specific trigger. | Agent must write: verbatim first sentence Bob says, referencing THIS trigger specifically. | When ≤3 active Tier-1: personal outreach to all. When >3: triage by (1) warm-path prospects first, (2) largest estimated ACV, (3) shortest urgency window. Excess Tier-1 receive automated personalized video/Snapshot offer within 48 hrs + personal follow-up within 5 days. | Low (2-5/month) |
 | **TIER 2** | Indicates pain but not confirmed budget | From §6.1 primary trigger list | Personal outreach when Tier-1 volume ≤2/week. Semi-automated (personalized first line + templated Snapshot offer) when Tier-1 volume >2/week. | Agent must write: verbatim first sentence Bob says, referencing THIS trigger specifically. | When Tier-1 + Tier-2 combined >8/week: Tier-2 shifts to fully automated nurture. Personal outreach only to warm-path Tier-2. | Medium (5-15/month) |
-| **TIER 3** | Indicates opportunity but not urgency | From §6.1 primary trigger list | Automated nurture sequence. Personal outreach only when Tier-1 + Tier-2 combined volume <5/week. | N/A — automated. Template must still be niche-specific. | Always automated. Bob reviews monthly for any that should have been Tier-2. | High (15-50+/month) |
+| **TIER 3** | Indicates opportunity but not urgency | From §6.1 primary trigger list | Automated nurture sequence. Personal outreach only when Tier-1 + Tier-2 combined volume <5/week. | N/A — automated. Template must still be niche-specific. | Always automated. Bob reviews monthly and reclassifies any that meet Tier-2 criteria. | High (15-50+/month) |
 
-**Bob's capacity constraint (binding):** Bob is ONE person at 40 hrs/week. The trigger system must account for volume spikes. If >3 Tier-1 triggers fire in a 48-hour window, Bob physically cannot execute "immediate personal outreach" to all. The capacity-aware column above specifies the triage logic. Without this, the system designs for average volume and breaks on variance — the first week 5 triggers fire simultaneously, the system fails. `[DESIGN]`.
+**Bob's capacity constraint (binding):** Bob is ONE person at 20 hrs/week. The trigger system must account for volume spikes. If >3 Tier-1 triggers fire in a 48-hour window, Bob physically cannot execute "immediate personal outreach" to all. The capacity-aware column above specifies the triage logic. Without this, the system designs for average volume and breaks on variance — the first week 5 triggers fire simultaneously, the system fails. `[DESIGN]`.
 
 **Triage tiebreaker (when multiple Tier-1 triggers compete for Bob's time):** (1) Warm-path (founder has personal connection to the prospect) beats cold, (2) Largest estimated ACV (from §1.5), (3) Shortest urgency window (from §6A.1). `[DESIGN]`.
 
@@ -666,11 +681,11 @@ Every number in the signal-to-revenue chain (detection → outreach → Snapshot
 #### 6A.7 Signal Risk Assessment
 
 - **"Signal doesn't fire" scenario:** What if the top 3 triggers DON'T fire for 3 months in this niche? What's the fallback GTM motion? (Always-running cold outbound? Content marketing? Partner referrals?) If the entire sales motion depends on triggers, a quiet quarter is a zero-revenue quarter. `[H]`.
-- **"Signals fire systematically wrong" scenario:** What if the triggers fire but are systematically misleading — wrong persona (Director-level triggers firing for VP+ companies where only C-suite controls budget), wrong timing (triggers fire but urgency window is actually 3× longer than estimated), wrong implication (trigger fires but no buying process exists — e.g., "company posted jobs" but they're backfill, not growth)? If Bob burns 40 hours on 10 false-trigger outreaches with zero Snapshots, how long until he stops trusting the trigger system? Answer: ~2 weeks. The system is only as credible as Bob's last 10 outreaches. Mitigation: track per-trigger conversion rate from Day 1. Any trigger falling below 50% of expected conversion for 10 consecutive outreaches is paused and re-examined. `[H]` — scenario.
+- **"Signals fire systematically wrong" scenario:** What if the triggers fire but are systematically misleading — wrong persona (Director-level triggers firing for VP+ companies where only C-suite controls budget), wrong timing (triggers fire but urgency window is actually 3× longer than estimated), wrong implication (trigger fires but no buying process exists — e.g., "company posted jobs" but they're backfill, not growth)? If Bob burns 20 hours on 10 false-trigger outreaches with zero Snapshots — an entire week's capacity — how long until he stops trusting the trigger system? Answer: ~2 weeks. The system is only as credible as Bob's last 10 outreaches. Mitigation: track per-trigger conversion rate from Day 1. Any trigger falling below 50% of expected conversion for 10 consecutive outreaches is paused and re-examined. `[H]` — scenario.
 - **Signal dependency risk per trigger:** Primary detection source. Backup detection source. If both go dark (API restriction, platform change), the trigger is undetectable — flag it. Example: "T1 (New CRO): Primary = LinkedIn job change API. Backup = company press release monitoring. If both dark → manual Google Alert fallback." `[H]`.
 - **Signal gaming risk:** If a competitor learns ClarityRev targets based on this signal, could they flood it with noise, pre-emptively contact those companies, or block the signal source? Any signal with public visibility can be gamed. `[H]`.
 
-**Done (minimum viable):** §6A.0 ACH table completed with ≥10 candidate triggers scored and bottom 5 rejection rationale. 5 triggers in §6A.1 with: evidence grades on all factual claims, SPICED mapping, pain dimension traceability (§3), trigger frequency with confidence level, cascade chains, outreach timing to the day-range, persona-specific messaging, and expected conversion estimate. §6A.3 tier table populated with niche-specific examples, Bob's verbatim opening lines, and capacity-aware responses. §6A.6 detection architecture specified with per-signal API endpoints, latency SLAs, and dedup logic. §6A.7 signal risk assessment completed including "signals fire systematically wrong" scenario with mitigation.
+**Done (minimum viable):** §6A.0 ACH table completed with candidate triggers scored (target ≥10, if fewer exist document search methodology) and bottom rejection rationale. 5 triggers in §6A.1 with: evidence grades on all factual claims, SPICED mapping, pain dimension traceability (§3), trigger frequency with confidence level, cascade chains, outreach timing to the day-range, persona-specific messaging, and expected conversion estimate. §6A.3 tier table populated with niche-specific examples, Bob's verbatim opening lines, and capacity-aware responses. §6A.6 detection architecture specified with per-signal API endpoints, latency SLAs, and dedup logic. §6A.7 signal risk assessment completed including "signals fire systematically wrong" scenario with mitigation.
 
 **Excellent:** Trigger cascade chains mapped for all 5 triggers. Competitive detection lead time assessed per trigger. Outreach timing specified to the day-range. Trigger-based messaging per persona with verbatim opening lines. Detection recall estimated per trigger. Latency SLAs specified per signal source. Deduplication logic designed with explicit windows. "Signal doesn't fire" and "signals fire systematically wrong" scenarios with fallback GTM and per-trigger conversion tracking. Bob's capacity constraint modeled with triage tiebreakers. At least one trigger cascade chain spans 3+ triggers and 6+ months.
 
@@ -717,7 +732,7 @@ For each signal in the catalog (≥15 signals recommended for a viable recurring
   - RECURRING (§10) — continuously monitored, alerted in real-time or weekly digest?
   - `[DESIGN]`.
 - **Detection method:** AUTO-DETECTABLE (algorithm, no human) / SEMI-AUTOMATED (algorithm flags, human confirms) / MANUAL (requires analyst review). `[H]` until tested.
-- **Recommended client action:** What should the client DO when this signal fires? Specific, actionable. "Contact [Client Name] within 48 hours. Reference the upcoming contract end date. Offer a renewal incentive per the playbook." `[DESIGN]`.
+- **Recommended client action:** What MUST the client DO when this signal fires? Specific, actionable. "Contact [Client Name] within 48 hours. Reference the upcoming contract end date. Offer a renewal incentive per the playbook." `[DESIGN]`.
 - **Urgency level for client:** CRITICAL (act within 24-48 hrs) / HIGH (act within 1 week) / MODERATE (act within 2 weeks) / LOW (awareness, no immediate action). `[H]` — design, validated by client feedback.
 - **Signal freshness:** How quickly does this signal go stale? (24 hours, 1 week, 1 month?) Determines monitoring frequency. `[H]`.
 - **False positive risk:** LOW / MEDIUM / HIGH. Estimation method: analogous signal / expert judgment / test data / unknown. `[H]` or `[S]`.
@@ -1033,7 +1048,7 @@ For each RIOS stage marked APPLIES or PARTIAL in Section 1.6. Skip stages marked
 | **Exit logic (stage-gate criteria)** | Measurable conditions for advancing to the next stage. NOT a prompt — specific criteria. Example: "Buyer progresses from Diagnose to Prove when ALL of: (a) Snapshot identifies ≥EUR X in recoverable revenue, (b) champion schedules results review call within 7 days of Snapshot delivery, (c) champion confirms budget existence per §2.3 budget verification method." | `[DESIGN]` |
 | **Escape valve** | What if buyer won't/can't progress? Nurture path? Different offer? Honest exit? Must be specific to THIS stage and THIS niche. | `[DESIGN]` |
 | **Champion advocacy at this stage** | What does the champion tell their boss to sell this stage? What evidence do they show? From §2.2b champion's internal sales playbook. Example: "After Diagnose: 'We ran a free diagnostic. It found EUR X in leakage across Y accounts. The paid Sprint recovers the top 5 deals in 14 days, guaranteed. I need EUR Y approval.'" | `[DESIGN]` |
-| **Founder time per buyer** | Who does what? Hours per buyer? Capacity ceiling per week? (Bob: 40 hrs/week; Adriaan: part-time; Wesley: build only, no sales.) | `[DESIGN]` — binding per §13 founder capacity |
+| **Founder time per buyer** | Who does what? Hours per buyer? Capacity ceiling per week? (Bob: 20 hrs/week; Adriaan: part-time; Wesley: build only, no sales.) | `[DESIGN]` — binding per §13 founder capacity |
 
 **Compound stage — cross-cutting property, NOT a peer journey stage:** Compound is not a stage buyers experience — it's a business outcome that accumulates across stages. At EACH stage, assess: "At what client count does each new client make the next client easier/cheaper/better to serve?" For the Compound row in the table above, answer:
 - What moat mechanism? (Benchmark, methodology, distribution depth, switching costs, brand?)
@@ -1131,7 +1146,7 @@ Enterprise (EUR W+/mo)      → Value: Full portfolio + white-glove + custom int
 
 **Compound probability calculation (MANDATORY):** End-to-end from Attract → Commit = [Transition 1 conversion %] × [Transition 2 conversion %] × [Transition 3 conversion %] = [X%]. At [Y] Diagnose-stage entrants per month, this produces [Z] recurring clients per month. At [EUR price] per recurring client, monthly recurring revenue from this journey = EUR [amount]. Is this viable? `[S]` until validated.
 
-**§13.2 reconciliation (MANDATORY):** The §7.3.1 end-to-end compound probability (journey-based) MUST reconcile with the §13.2 end-to-end rates (channel-based) within ±20% tolerance. These are the SAME funnel modeled from different starting points. If §7.3.1 produces 2% end-to-end and §13.2 warm channel produces 0.5-5.3% end-to-end, the journey-based rate should fall within the channel-based range. If the models diverge by >20%: (a) the conversion rates in one model are wrong, or (b) the channel mix assumption differs from the journey assumption. Resolve and document the reconciliation. This reconciliation is checked in the Canvas-Level Gates (§4.2). `[DESIGN]`.
+**§13.2 reconciliation (MANDATORY):** The §7.3.1 end-to-end compound probability (journey-based) MUST reconcile with the §13.2 end-to-end rates (channel-based) within ±20% tolerance. These are the SAME funnel modeled from different starting points. If §7.3.1 produces 2% end-to-end and §13.2 warm channel produces 0.5-5.3% end-to-end, the journey-based rate MUST fall within the channel-based range. If the models diverge by >20%: (a) the conversion rates in one model are wrong, or (b) the channel mix assumption differs from the journey assumption. Resolve and document the reconciliation. This reconciliation is checked in the Canvas-Level Gates (§4.2). `[DESIGN]`.
 
 ##### 7.3.2 Non-Linear Paths (Equally Important)
 
@@ -1190,7 +1205,7 @@ The journey is not just an acquisition funnel. Map each stage to its Bowtie Funn
 | **Total delivery cost** | | [Fixed + Variable] | [Fixed + Variable] | [Fixed + Variable] |
 | **Cost per client** | | [Total ÷ 5] | [Total ÷ 20] | [Total ÷ 100] |
 
-**Margin trajectory:** At 5 clients, margin is typically lower (fixed costs spread over few clients). At 20 clients, margin should approach the target from §11.7 (70-85% for automated workflows). At 100 clients, margin should reflect near-full automation. If margin doesn't improve with scale, the service isn't actually automated. `[S]` until validated.
+**Margin trajectory:** At 5 clients, margin is typically lower (fixed costs spread over few clients). At 20 clients, margin MUST approach the target from §11.7 (70-85% for automated workflows). At 100 clients, margin MUST reflect near-full automation. If margin doesn't improve with scale, the service isn't actually automated. `[S]` until validated.
 
 **Founder capacity allocation per stage (binding — per §13):**
 
@@ -1215,7 +1230,7 @@ The journey is not just an acquisition funnel. Map each stage to its Bowtie Funn
 
 "It's 18 months from now. ClarityRev executed the journey as designed in this niche. <5% of Snapshots convert to paid. Why?"
 
-The agent must write the specific failure narrative for THIS niche. NOT generic ("the product was bad") — niche-specific. Consider:
+The agent MUST write the specific failure narrative for THIS niche. NOT generic ("the product was bad") — niche-specific. The agent MUST evaluate each of the following failure scenarios, select the 2-3 most likely failures for this niche, and write a specific narrative for each selected scenario:
 
 - **The Snapshot didn't create urgency.** Buyers said "interesting" but didn't act. Why? The pain wasn't acute enough? The EUR number wasn't big enough? The champion didn't have authority to act on it?
 - **The Prove stage didn't convert to Commit.** The Sprint delivered value but clients saw it as a one-time fix, not an ongoing need. "We recovered the top 5 deals. We're good now."
@@ -1281,7 +1296,7 @@ Three alternative futures for this niche's journey. Which is the recommendation 
 
 #### 7.6 Journey Technical Specification
 
-**Purpose:** Specify what must be built to operationalize this journey. A senior engineer (Wesley) should be able to implement stage transitions from this spec.
+**Purpose:** Specify what must be built to operationalize this journey. A senior engineer (Wesley) MUST be able to implement stage transitions from this spec alone, without needing additional clarification.
 
 **Applied lenses:** Systems Designer (data flow, instrumentation, automation feasibility, FMEA)
 
@@ -1478,7 +1493,7 @@ Distribution is specified per service, not as a generic list. For each free serv
 
 "It's 12 months from now. 500 Snapshots completed across all free services. Fewer than 2% converted to paid. What went wrong?"
 
-The agent writes the specific failure narrative for THIS niche. Consider:
+The agent MUST write the specific failure narrative for THIS niche. The agent MUST evaluate each failure scenario below, select the 2-3 most likely ones for this niche, and write a specific narrative for each selected scenario:
 - **The free tools attracted the wrong buyers.** Tier 1 content (benchmark reports) was downloaded by students, journalists, and competitors — not buyers. No qualification gate.
 - **The Snapshot produced accurate numbers that didn't create urgency.** Buyers said "interesting, thanks" and never responded to follow-up. The number alone wasn't enough.
 - **Competitors copied the free tools.** Within 6 months, 2 of 3 competitors launched identical free diagnostics. Buyers couldn't distinguish. The free layer became table stakes.
@@ -1562,7 +1577,7 @@ Extends §12.11 security specification for free-tier specifically:
 
 ---
 
-**Done (minimum viable — FULL §8):** Free layer strategic job stated. Competitor free layer audit (§8.1) with ≥3 competitors, source-verified (URL + date), Match/Differentiate/Skip decisions with strategic intent per competitor tool. Competitive free-layer Strategy Canvas (§8.1a). ≥3 free services designed (§8.2) across ≥2 tiers, each with: evidence grades on all fields (inherited or `[DESIGN]`), pain traceability (§3), signal traceability (§6B), competitive decision, specific output, data requirements, turnaround, workflow fit, conversion hook, Bob's Usage (verbatim), top 2 objection responses (verbatim), MEDDIC mapping, conversion model (rate + time + stall point + confidence), delivery cost, build spec (tools/APIs/effort/dependencies/cost per run), demand validation evidence, and niche-name-swap test. Distribution specified per service (§8.3) with channel, SEO/SEM, aggregator-native version, distribution cost, and channel experiment design. Free-to-paid conversion design (§8.4) with per-tier post-completion sequence and nurture for non-converters. Free layer pre-mortem (§8.5.1), free anchoring risk assessment with niche-specific mitigations (§8.5.2), breakeven analysis with kill switch (§8.5.3), competitor exploitation assessment with defenses (§8.5.4). Technical operations (§8.6): health monitoring, multi-tenant scaling, free-tier data retention/privacy, service versioning.
+**Done (minimum viable — FULL §8):** Free layer strategic job stated. Competitor free layer audit (§8.1) with ≥3 competitors (target; if fewer exist document all found), source-verified (URL + date), Match/Differentiate/Skip decisions with strategic intent per competitor tool. Competitive free-layer Strategy Canvas (§8.1a). ≥3 free services designed (§8.2) across ≥2 tiers, each with: evidence grades on all fields (inherited or `[DESIGN]`), pain traceability (§3), signal traceability (§6B), competitive decision, specific output, data requirements, turnaround, workflow fit, conversion hook, Bob's Usage (verbatim), top 2 objection responses (verbatim), MEDDIC mapping, conversion model (rate + time + stall point + confidence), delivery cost, build spec (tools/APIs/effort/dependencies/cost per run), demand validation evidence, and niche-name-swap test. Distribution specified per service (§8.3) with channel, SEO/SEM, aggregator-native version, distribution cost, and channel experiment design. Free-to-paid conversion design (§8.4) with per-tier post-completion sequence and nurture for non-converters. Free layer pre-mortem (§8.5.1), free anchoring risk assessment with niche-specific mitigations (§8.5.2), breakeven analysis with kill switch (§8.5.3), competitor exploitation assessment with defenses (§8.5.4). Technical operations (§8.6): health monitoring, multi-tenant scaling, free-tier data retention/privacy, service versioning.
 
 **Excellent:** Every free service passes the niche-name-swap test. The free layer includes an aggregator-native version for at least one service. At least one free service is a deliberate Match of a competitor's offering (proving the audit informed decisions). The free anchoring risk is assessed honestly for this niche — not downplayed. The breakeven conversion rate is calculated and the kill switch is specific. The pre-mortem names a specific failure scenario unique to this niche. Bob's Usage fields are verbatim — a rep could read them on a call today. The build spec per service is complete enough that Wesley could estimate sprint scope from it.
 
@@ -1724,7 +1739,7 @@ For each paid service (aggregate into one pricing rationale or break out per ser
 
 "It's 12 months from now. 50 prospects completed the free Snapshot. 8 converted to a paid service. Of those 8, 3 invoked the guarantee. 2 converted to recurring. What went wrong?"
 
-The agent writes the specific failure narrative for THIS niche. Consider:
+The agent MUST write the specific failure narrative for THIS niche. The agent MUST evaluate each failure scenario below, select the 2-3 most likely ones for this niche, and write a specific narrative for each selected scenario:
 - **The free → paid price jump was too steep.** Buyers who received EUR 400K in leakage findings for free balked at the EUR 5K Sprint. "You found it for free — why does fixing it cost money?"
 - **The guarantee was invoked too often.** The Snapshot overestimated recoverable revenue. Actual recovery was 40% of projected. Clients didn't renew.
 - **The paid service was perceived as a one-time fix.** Clients recovered the top deals and said "we're good." No path to recurring was visible.
@@ -1798,9 +1813,9 @@ This sequencing is BINDING for build investment. All three services are designed
 
 ---
 
-**Done (minimum viable — FULL §9):** Paid portfolio architecture stated (ladder/menu/sequence). Competitor paid audit (§9.1) with ≥3 competitors, source-verified (URL + date), Match/Differentiate/Skip with strategic intent. Competitive paid-layer Strategy Canvas (§9.1a). ≥3 paid services designed (§9.2) with portfolio economics summary, each with: evidence grades on all fields, service type, portfolio role, pain traceability (§3), signal traceability (§6B), competitive decision, price with competitor anchoring + strategic pricing rationale (premium/parity/discount), detailed scope, time-to-value target, risk reversal with guarantee financial exposure, evidence needed, purchase psychology, price sensitivity threshold, delivery method + automation level, build spec (workflows/APIs/effort/dependencies/cost per delivery), Bob's Usage (verbatim), top 3 objection responses (verbatim), MEDDIC mapping, sales cycle (meetings + duration + approvers), conversion model (free→paid rate + paid→recurring rate + stall points), client data handling, and niche-name-swap test. Pricing justification (§9.4) with strategic pricing position, competitor anchoring, ROI justification, purchase authority fit, and displacement comparison. Paid service pre-mortem (§9.5.1), guarantee financial exposure model (§9.5.2), minimum viable paid portfolio sequence (§9.5.3), competitor undercutting scenario (§9.5.4). Technical operations (§9.6): health monitoring + service versioning.
+**Done (minimum viable — FULL §9):** Paid portfolio architecture stated (ladder/menu/sequence). Competitor paid audit (§9.1) with ≥3 competitors (target; if fewer exist document all found), source-verified (URL + date), Match/Differentiate/Skip with strategic intent. Competitive paid-layer Strategy Canvas (§9.1a). ≥3 paid services designed (§9.2) with portfolio economics summary, each with: evidence grades on all fields, service type, portfolio role, pain traceability (§3), signal traceability (§6B), competitive decision, price with competitor anchoring + strategic pricing rationale (premium/parity/discount), detailed scope, time-to-value target, risk reversal with guarantee financial exposure, evidence needed, purchase psychology, price sensitivity threshold, delivery method + automation level, build spec (workflows/APIs/effort/dependencies/cost per delivery), Bob's Usage (verbatim), top 3 objection responses (verbatim), MEDDIC mapping, sales cycle (meetings + duration + approvers), conversion model (free→paid rate + paid→recurring rate + stall points), client data handling, and niche-name-swap test. Pricing justification (§9.4) with strategic pricing position, competitor anchoring, ROI justification, purchase authority fit, and displacement comparison. Paid service pre-mortem (§9.5.1), guarantee financial exposure model (§9.5.2), minimum viable paid portfolio sequence (§9.5.3), competitor undercutting scenario (§9.5.4). Technical operations (§9.6): health monitoring + service versioning.
 
-**Excellent:** Every paid service passes the niche-name-swap test. At least one service is a deliberate Match (proving competitor audit informed design). The guarantee exposure is calculated and within ClarityRev's risk tolerance. The minimum viable portfolio sequence is respected — the hinge paid service is designated for first build. Bob's Usage fields are verbatim — a rep could present the service on a call today. Objection responses cite specific evidence from §12. Price sensitivity is assessed against actual purchase authority thresholds from §2.3. The competitor undercutting scenario is specific (names the competitor most likely to do this).
+**Excellent:** Every paid service passes the niche-name-swap test. At least one service is a deliberate Match (proving competitor audit informed design). The guarantee exposure is calculated and within ClarityRev's risk tolerance. The minimum viable portfolio sequence is respected — the hinge paid service is designated for first build. Bob's Usage fields are verbatim — a rep can present the service on a call today. Objection responses cite specific evidence from §12. Price sensitivity is assessed against actual purchase authority thresholds from §2.3. The competitor undercutting scenario is specific (names the competitor most likely to do this).
 
 **ADVERSARIAL CHECK (extended):** "If we ran sections 8-9 for 3 niches simultaneously, would all 3 produce genuinely different free tools and paid services? Or the same Snapshot/Sprint/Audit with the niche name changed? Are there deliberate Match decisions where competitors got it right, or is everything 'differentiated' for the sake of it? Is the single most dangerous assumption surfaced: that buyers will pay for the fix after getting the diagnosis for free? Is the guarantee exposure modeled — what if 40% of clients invoke it in the first 6 months? Can ClarityRev survive that? Is the minimum viable portfolio respected, or are we building 3 paid services at zero clients? What would the founders' most skeptical advisor say?"
 
@@ -2043,7 +2058,7 @@ Top 3 reasons a client cancels this recurring service. For each: the built-in de
 
 "It's 18 months from now. 30 clients signed for recurring. Today, 14 remain. Monthly churn averaged 3.8%. What went wrong?"
 
-The agent writes the specific failure narrative for THIS niche. Consider:
+The agent MUST write the specific failure narrative for THIS niche. The agent MUST evaluate each failure scenario below, select the 2-3 most likely ones for this niche, and write a specific narrative for each selected scenario:
 - **The value proposition didn't sustain.** Months 1-3: clients engaged. By Month 6: signals became background noise. "We already know our pipeline has gaps. Tell us something new." The recurring service didn't evolve.
 - **The champion left.** Average CRO tenure: 21 months (§2.5 champion continuity risk). When the champion who bought the service left, the new champion saw it as "the previous person's tool" and canceled.
 - **Competitor launched a bundled offering.** A competitor included signal monitoring in their existing platform at no additional cost. "Why pay ClarityRev EUR 3K/month when our CRM now does this for free?"
@@ -2110,7 +2125,7 @@ Per §11.12 and extending §8.6.3 for recurring tier:
 
 ---
 
-**Done (minimum viable — FULL §10):** Recurring portfolio strategy stated. Competitor recurring audit (§10.1) with ≥3 competitors, source-verified, Match/Differentiate/Skip with strategic intent. Competitive recurring Strategy Canvas (§10.1a). Core recurring service designed (§10.2) with: evidence grades on all fields, strategic rationale for recurring, competitive decision, price with tiering driver + competitor anchoring, detailed scope (included/excluded), relationship to paid services (§9), LTV model, paid→recurring conversion model, onboarding process + automation, churn prevention (niche-specific), Bob's Usage (verbatim), top 3 objection responses (verbatim), niche-name-swap test. Expansion architecture (§10.3) with ≥2 paths, specific expansion triggers from §6B.4, expansion conversion math, and pricing model. Moat connection (§10.4) with quantified trajectory at 5/20/50/100 clients. Land-and-expand revenue trajectory (§10.5) with 24-month milestones + step-up triggers. Service tiering driver (§10.6) with objective boundaries + competitor anchoring. Value delivery cadence (§10.7) with 6 timeline checkpoints + client monthly experience description. Onboarding-to-recurring conversion (§10.8) with automatic vs. sales-led decision + conversion rate benchmark. Client provisioning automation (§10.8.1) with per-step automation + SLAs. Competitive retention defense (§10.9) with switching cost math. "Why Cancel?" pre-mortem (§10.10) with early warning signals + churn benchmarks. Recurring service pre-mortem (§10.11.1). Churn stress test at 4 scenarios (§10.11.2). Minimum viable recurring sequence (§10.11.3). Technical operations (§10.12): delivery automation, multi-tenant isolation, health monitoring.
+**Done (minimum viable — FULL §10):** Recurring portfolio strategy stated. Competitor recurring audit (§10.1) with ≥3 competitors (target; if fewer exist document all found), source-verified, Match/Differentiate/Skip with strategic intent. Competitive recurring Strategy Canvas (§10.1a). Core recurring service designed (§10.2) with: evidence grades on all fields, strategic rationale for recurring, competitive decision, price with tiering driver + competitor anchoring, detailed scope (included/excluded), relationship to paid services (§9), LTV model, paid→recurring conversion model, onboarding process + automation, churn prevention (niche-specific), Bob's Usage (verbatim), top 3 objection responses (verbatim), niche-name-swap test. Expansion architecture (§10.3) with ≥2 paths, specific expansion triggers from §6B.4, expansion conversion math, and pricing model. Moat connection (§10.4) with quantified trajectory at 5/20/50/100 clients. Land-and-expand revenue trajectory (§10.5) with 24-month milestones + step-up triggers. Service tiering driver (§10.6) with objective boundaries + competitor anchoring. Value delivery cadence (§10.7) with 6 timeline checkpoints + client monthly experience description. Onboarding-to-recurring conversion (§10.8) with automatic vs. sales-led decision + conversion rate benchmark. Client provisioning automation (§10.8.1) with per-step automation + SLAs. Competitive retention defense (§10.9) with switching cost math. "Why Cancel?" pre-mortem (§10.10) with early warning signals + churn benchmarks. Recurring service pre-mortem (§10.11.1). Churn stress test at 4 scenarios (§10.11.2). Minimum viable recurring sequence (§10.11.3). Technical operations (§10.12): delivery automation, multi-tenant isolation, health monitoring.
 
 **Excellent:** Every recurring service passes the niche-name-swap test. The LTV/CAC ratio exceeds 3× even at conservative conversion rates. The moat trajectory is quantified with specific accuracy improvements at each client-count threshold. The value delivery cadence is specific enough that a client could read it and know exactly what they receive. Churn prevention is tied to niche-specific triggers, not generic "great service." The switching cost math is specific — a client could calculate their own switching cost from it. The minimum viable recurring sequence is respected — Core tier only until 10 clients validate demand.
 
@@ -2137,7 +2152,7 @@ Per §11.12 and extending §8.6.3 for recurring tier:
 **Evidence grading for this section (binding):**
 - Tool exists and can perform the specified function: `[P]` — must cite documentation URL or test result
 - Pattern demonstrated in a similar context: `[E]` — must cite the prior implementation
-- This specific tool combination is new: `[H]` — must explain why it should work
+- This specific tool combination is new: `[H]` — must explain why it works and cite evidence of similar combinations succeeding
 - Relies on unproven technology or assumption: `[S]` — must flag for validation
 - Design decision (not a factual claim): `[DESIGN]`
 
@@ -2159,7 +2174,7 @@ For each automated workflow powering a commercial service:
 
 **Step 2 — What's the output?** What does the client/buyer actually receive? (PDF report, enriched CSV, real-time dashboard, embedded chat interface, CRM-native alert, automated email digest, Slack/Teams notification, custom web asset.) Must match the delivery method specified in §8-10 for the service this workflow powers. `[DESIGN]`.
 
-**Step 3 — What tools/APIs/data sources power it?** No catalog limits. Consider ALL available: Firecrawl, DataforSEO, Clay, Apollo.io, Clearbit, Hunter.io, Crunchbase, LinkedIn (Sales Nav API / scraping), G2/Capterra (scraping), Reddit API, YouTube API, Google Trends, Google Search Console, SERP APIs, Facebook Ad Library, BuiltWith, Wappalyzer, n8n/Make, Supabase, Pinecone/pgvector, LangChain/CrewAI, custom Python scripts, CRM/ATS APIs, webhooks, RSS feeds, News APIs, podcast transcripts, SEC EDGAR, and anything else this niche requires.
+**Step 3 — What tools/APIs/data sources power it?** No catalog limits. The agent MUST evaluate ALL available tooling including but not limited to: Firecrawl, DataforSEO, Clay, Apollo.io, Clearbit, Hunter.io, Crunchbase, LinkedIn (Sales Nav API / scraping), G2/Capterra (scraping), Reddit API, YouTube API, Google Trends, Google Search Console, SERP APIs, Facebook Ad Library, BuiltWith, Wappalyzer, n8n/Make, Supabase, Pinecone/pgvector, LangChain/CrewAI, custom Python scripts, CRM/ATS APIs, webhooks, RSS feeds, News APIs, podcast transcripts, SEC EDGAR, and anything else this niche requires.
 
 **Build-vs-buy rationale (MANDATORY per workflow):** For each tool/API selected, state: BUILD (custom code), BUY (existing SaaS/API), or LEVERAGE (open-source/free tier). Justify: "BUY Clay for enrichment — existing API, proven at scale, faster than building custom enrichment pipeline. BUILD the signal taxonomy logic — it's niche-specific IP and our defensibility depends on it." `[DESIGN]`.
 
@@ -2269,7 +2284,7 @@ Per workflow type, define specific, measurable quality standards. Examples:
 | Workflow Type | "Good Enough to Deliver" | "Needs Rework" |
 |---|---|---|
 | VoC Report | ≥5 verbatim quotes sourced from G2/Reddit; ≥3 pain themes clustered with ≤10% unclassified quotes; ≤10% of claims marked `[S]` | <3 quotes; quotes are generic ("users want better features"); >20% quotes unclassified; sources not cited |
-| Competitive Brief | ≥3 competitors priced with source URLs; positioning claims verifiable from competitor websites; feature matrix ≥80% complete (≤20% UNKNOWN cells) | Pricing from memory/estimation; positioning claims unverifiable; feature matrix <50% complete |
+| Competitive Brief | ≥3 competitors priced with source URLs (target; if fewer exist, document all found and search methodology); positioning claims verifiable from competitor websites; feature matrix ≥80% complete (≤20% UNKNOWN cells) | Pricing from memory/estimation; positioning claims unverifiable; feature matrix <50% complete |
 | Lead List | ≥90% email validity (verified via Hunter.io or equivalent); ≥80% firmographic accuracy; ≥3 enrichment fields per record beyond name/company | <70% email validity; firmographic data unverified; single-source enrichment |
 
 #### 11.10 Data Freshness SLA
@@ -2294,7 +2309,7 @@ Per data source type, define maximum age before output must be refreshed:
 
 - **How do workflows chain?** Example: Competitive Brief (W2) → Positioning Recommendation (W3) → Website Copy Engine (W5). Output of W2 is input to W3. Output of W3 is input to W5.
 - **Compound value:** Chained workflows produce outputs more valuable than the sum of individual workflows. The Competitive Brief alone = EUR 2K. The Brief + Positioning + Website Copy as a chain = EUR 7.5K (the Sprint). The chain IS the product.
-- **Design for chains:** Each workflow output should be structured to serve as input to the next workflow in the chain.
+- **Design for chains:** Each workflow output MUST be structured to serve as input to the next workflow in the chain. If a workflow's output cannot be consumed by the next workflow, document the format gap and specify the adapter required.
 
 #### 11.12 Multi-Tenant Architecture
 
@@ -2330,7 +2345,7 @@ Per workflow, identify the most likely errors and what catches them before clien
 
 "It's 18 months from now. 3 core workflows were built. 2 of them produce unreliable output. 1 has been abandoned because the key API was deprecated. Clients are receiving inconsistent deliverables. What went wrong?"
 
-The agent writes the specific failure narrative for THIS niche's workflows. Consider:
+The agent MUST write the specific failure narrative for THIS niche's workflows. The agent MUST evaluate each failure scenario below and select the 2-3 most likely for this niche:
 - **API deprecation.** A critical tool (LinkedIn API, Crunchbase, Clay) changed pricing, restricted access, or was deprecated. The workflow that depended on it broke with no fallback.
 - **LLM quality drift.** The LLM model that powered synthesis workflows was updated by the provider. Output quality degraded on niche-specific tasks. No monitoring detected it for 3 months.
 - **Cost spiral.** Per-run costs were 3× estimates because prompt complexity grew, enrichment volume exceeded assumptions, and API pricing increased. Workflows that were profitable at 50 runs/month lost money at 200.
@@ -2675,7 +2690,7 @@ Structured specification, not a paragraph:
 
 "It's 12 months from now. We executed the evidence strategy as designed. Buyers still don't trust us. Why?"
 
-The agent writes the specific failure narrative for THIS niche. Consider:
+The agent MUST write the specific failure narrative for THIS niche. The agent MUST evaluate each failure scenario below, select the 2-3 most likely ones for this niche, and write a specific narrative for each selected scenario:
 - **"Your own data" wasn't enough.** Buyers acknowledged the Snapshot findings but still wanted to see references before committing budget. "We love the diagnostic. Who else has used this?" → "We're new — you'd be among the first." → Silence. The empirical proof strategy failed to overcome the social proof gap.
 - **Competitors weaponized our zero-client status.** "ClarityRev? They're 3 founders with no clients. Here's our Gartner Magic Quadrant position and 500 referenceable customers." Buyers chose the safe option.
 - **The guarantee wasn't trusted.** "3× ROI or free" sounded too good to be true. Buyers assumed there was fine print that would let ClarityRev weasel out of it.
@@ -2727,20 +2742,20 @@ At zero clients, the evidence stack confidence is LOW — and that's honest. The
 **Evidence grading for this section (binding):** Every factual claim and every conversion metric must carry an evidence grade `[P/E/H/S]`. Design decisions are marked `[DESIGN]`. At zero clients, all conversion rates are `[S]` — this is honest, not a weakness.
 
 **Founder GTM capacity (binding):**
-- **Bob:** Full-time for next 4 months. Primary sales closer. Can prospect, run demos, close deals, manage partner relationships. 40 hrs/week available for GTM. `[P]`.
+- **Bob:** Full-time for next 4 months. Primary sales closer. Can prospect, run demos, close deals, manage partner relationships. 20 hrs/week available for GTM. `[P]`.
 - **Adriaan:** 30 hrs/week until revenue justifies full-time (then quits job). Selling + implementation + client technical onboarding + data operations. Can prospect, enrich data, run Clay pipelines, handle technical questions during sales process and onboarding. Also handles: Diagnose overflow calls, Sprint onboarding (4 hrs/client), Month 1 recurring onboarding (6 hrs/client), signal quality review, case study generation, validation activities. `[P]`.
 - **Wesley:** Building and implementation ONLY. Does NOT do sales. 40 hrs/week on engine, workflows, website, technical delivery. May participate in technical demos if needed but does not prospect or close. `[P]`.
 - **Sales hires:** Commission-only sales people can be added early to accelerate growth. Top sales people hired on salary + commission when revenue justifies (est. EUR 30K+ MRR). `[DESIGN]`.
 
-**Bob time-budget (actual hours, not just percentages):** The binding constraint is hours, not allocation percentages. This table translates the channel allocation into actual weekly hours.
+**Bob time-budget (actual hours, not just percentages):** The binding constraint is hours, not allocation percentages. This table translates the channel allocation into actual weekly hours. With 20 hrs/week, the following table shows Bob's maximum available hours per channel per phase.
 
 | Channel | Month 1-3 (% / hrs) | Month 4-6 (% / hrs) | Month 7-12 (% / hrs) | Primary Activity |
 |---|---|---|---|---|
-| Warm network (Bob + Adriaan) | 70% / 28 hrs Bob + Adriaan part-time | 40% / 16 hrs | 20% / 8 hrs | Personal outreach, Snapshot calls, follow-ups |
-| Cold outbound (Bob + Adriaan) | 20% / 8 hrs | 35% / 14 hrs | 30% / 12 hrs | Prospect list review, personalized outreach, A/B testing |
-| Partners/aggregators (Bob) | 10% / 4 hrs | 20% / 8 hrs | 30% / 12 hrs | Partner recruitment, activation, co-selling |
-| Marketplace/inbound | 0% / 0 hrs | 5% / 2 hrs | 20% / 8 hrs | Content, SEO, website optimization |
-| **Total Bob hours/week** | **40 hrs** | **40 hrs** | **40 hrs** | |
+| Warm network (Bob + Adriaan) | 70% / 14 hrs Bob + Adriaan part-time | 40% / 8 hrs | 20% / 4 hrs | Personal outreach, Snapshot calls, follow-ups |
+| Cold outbound (Bob + Adriaan) | 20% / 4 hrs | 35% / 7 hrs | 30% / 6 hrs | Prospect list review, personalized outreach, A/B testing |
+| Partners/aggregators (Bob) | 10% / 2 hrs | 20% / 4 hrs | 30% / 6 hrs | Partner recruitment, activation, co-selling |
+| Marketplace/inbound | 0% / 0 hrs | 5% / 1 hr | 20% / 4 hrs | Content, SEO, website optimization |
+| **Total Bob hours/week** | **20 hrs** | **20 hrs** | **20 hrs** | |
 
 **Bob pipeline capacity model:** Bob can effectively manage a maximum active pipeline of [N] deals simultaneously (estimate: 15-20 deals across all stages). Beyond this, deal quality and follow-up consistency degrade. Track: active deals in HubSpot, deals per stage, time since last activity per deal. If >20 active deals for >2 consecutive weeks → activate commission reps or de-prioritize lowest-probability deals. `[DESIGN]`.
 
@@ -2748,7 +2763,7 @@ At zero clients, the evidence stack confidence is LOW — and that's honest. The
 
 #### 13.1 Channel Investment Allocation
 
-Not just "which channel" — how much founder time goes to each channel at each phase. The binding constraint is Bob's 40 hrs/week + Adriaan's part-time hours.
+Not just "which channel" — how much founder time goes to each channel at each phase. The binding constraint is Bob's 20 hrs/week + Adriaan's part-time hours.
 
 | Channel | Month 1-3 (%) | Month 4-6 (%) | Month 7-12 (%) | Rationale |
 |---|---|---|---|---|
@@ -2914,7 +2929,7 @@ Top 5 niche-specific objections. For each: the exact response, the supporting ev
 | Pattern objection | Same objection from 2 of first 5 prospects | Same objection from >50% of prospects | Early warning: if 2 of first 5 prospects raise the same objection, investigate immediately. Do NOT wait for >50% sample size — that wastes hours on deals already structurally blocked. Address in offer design before outreach #6. Kill: >50% AND investigation confirmed structural → niche blocked. | `[DESIGN]` |
 | Snapshot quality | >40% of Snapshots find <EUR 50K in leakage after 10 Snapshots | >60% of Snapshots find <EUR 50K after 20 Snapshots | Early warning: pain not acute enough in this niche, OR targeting wrong company size. Revisit §3 pain quantification. Kill: confirmed insufficient pain → niche not viable. | `[DESIGN]` |
 
-**Founder resilience:** Bob at 40 hrs/week for 4 months = 640 hours of GTM capacity. If these hours burn without results, the company enters a cash crisis. Track cumulative Bob-hours vs. cumulative revenue. If the ratio exceeds 100:1 (100 hrs per EUR 1K MRR), escalate. Early warning at 50:1 ratio. `[DESIGN]`.
+**Founder resilience:** Bob at 20 hrs/week for 4 months = 320 hours of GTM capacity. If these hours burn without results, the company enters a cash crisis. Track cumulative Bob-hours vs. cumulative revenue. If the ratio exceeds 200:1 (200 hrs per EUR 1K MRR), escalate. Early warning at 100:1 ratio. `[DESIGN]`.
 
 **Competitive response anticipation:** If ClarityRev starts winning, competitors will: (a) launch free diagnostics within 3-6 months `[H]`, (b) cut prices by 15-30% `[H]`, (c) target ClarityRev's prospects with FUD ("untested startup, no references") immediately `[P]`. Pre-emption: build switching costs early (benchmark data, workflow embedding, integration depth), document every client win with attributable EUR figures, build partner relationships that competitors can't easily replicate. `[DESIGN]`.
 
@@ -2948,13 +2963,13 @@ For prospects who complete the Snapshot but don't convert to paid within 14 days
 
 ##### 13.9.1 GTM Pre-Mortem
 
-"It's 90 days from now. We executed the GTM plan as designed. Zero revenue. Bob has burned 480 hours. What went wrong?"
+"It's 90 days from now. We executed the GTM plan as designed. Zero revenue. Bob has burned 240 hours. What went wrong?"
 
-The agent writes the specific failure narrative for THIS niche. Consider:
+The agent MUST write the specific failure narrative for THIS niche. The agent MUST evaluate each failure scenario below, select the 2-3 most likely ones for this niche, and write a specific narrative for each selected scenario:
 - **The warm network wasn't as warm as assumed.** "Warm" contacts were LinkedIn connections who hadn't spoken to Bob in 3 years. Response rate: 3%, not 20%.
 - **Messaging didn't resonate.** The pain language from §2.6 was wrong for this niche. Buyers use different words. The Snapshot offer landed as "another sales tool" not "free diagnostic."
 - **The Snapshot was too hard to complete.** Data connection friction was higher than expected. 60% of requesters never connected their CRM. OAuth was blocked by IT. CSV upload was "too much work."
-- **Bob spread himself too thin.** 40 hrs/week sounds like a lot. Between prospecting, calls, follow-ups, partner meetings, and internal coordination, actual selling time was <15 hrs/week.
+- **Bob spread himself too thin.** 20 hrs/week is tight. Between prospecting, calls, follow-ups, partner meetings, and internal coordination, actual selling time was <8 hrs/week.
 - **The first 5 "yeses" were from companies too small to matter.** They qualified on paper (right CRM, right size) but their pipeline was too small for the EUR math to create urgency.
 
 ##### 13.9.2 First-90-Days Week-by-Week Execution Calendar
@@ -2968,9 +2983,9 @@ The agent writes the specific failure narrative for THIS niche. Consider:
 | 9-10 | Sprint delivery oversight (5 hrs). Outreach continues (20 hrs). First recurring conversations (10 hrs). Partner channel review (1 hr). Pipeline/admin overhead (4 hrs). | Deliver Sprints — weekly check-ins (12 hrs). Document results for case studies (8 hrs). Enrichment + ongoing data ops (5 hrs). Internal coordination (5 hrs). | First Sprint results delivered. | <5% Snapshot-to-paid → investigate hinge |
 | 11-12 | Close first recurring deals (15 hrs). Outreach + partner management (21 hrs). Pipeline/admin overhead (4 hrs). | Onboard recurring clients (15 hrs). Begin case study drafts (5 hrs). Data ops + enrichment (5 hrs). Internal coordination (5 hrs). | 90-day review. | <EUR 5K total revenue → serious pivot |
 
-**Note on Week 1-2 warm allocation:** Weeks 1-2 allocate 20 hrs to warm outreach (50% of 40 hrs) — below the 70% monthly target — due to one-time setup (HubSpot, Snapshot dry-run). Weeks 3-12 compensate: warm outreach averages 18-20 hrs/week for the remaining weeks. The monthly weighted average across all 12 weeks meets the 70%/20%/10% allocation from §13.1. Setup hours decline to near-zero by Week 3. `[DESIGN]`.
+**Note on Week 1-2 warm allocation:** Weeks 1-2 allocate 10 hrs to warm outreach (50% of 20 hrs) — below the 70% monthly target — due to one-time setup (HubSpot, Snapshot dry-run). Weeks 3-12 compensate: warm outreach averages 9-10 hrs/week for the remaining weeks. The monthly weighted average across all 12 weeks meets the 70%/20%/10% allocation from §13.1. Setup hours decline to near-zero by Week 3. `[DESIGN]`.
 
-**Pipeline/admin overhead (4 hrs/week):** Managing 15-20 active deals requires ~2 hrs of pipeline review + 2 hrs of admin/email/internal coordination. This is non-negotiable overhead. Without this line item, the 40 hrs/week allocation is aspirational fiction. `[DESIGN]`.
+**Pipeline/admin overhead (4 hrs/week):** Managing 15-20 active deals requires ~2 hrs of pipeline review + 2 hrs of admin/email/internal coordination. This is non-negotiable overhead. Without this line item, the 20 hrs/week allocation is aspirational fiction — pipeline/admin alone consumes 20% of total capacity. `[DESIGN]`.
 
 ##### 13.9.3 Content & SEO Roadmap (Marketplace/Inbound Channel)
 
@@ -2989,15 +3004,15 @@ For the marketplace/inbound channel (activates Month 4+):
 
 **Done (minimum viable — FULL §13):** Evidence grades on all claims. Bob time-budget in actual hours/week (not just %). Bob pipeline capacity model with max active deals. Channel allocation table with rationale. Per-channel ROI estimates with grades. Per-channel experiment designs with success/fail thresholds. Full funnel model with ranges, benchmark sources, and confidence calibration per rate. Funnel stress test at 50% conversion rates. Deal economics with grades. Outreach message architecture: completed for ≥4 channel-persona combinations (LinkedIn→Champion, Email→Champion, Email→Economic Buyer, Referral→Champion) — all verbatim. Top 5 objections with verbatim responses, evidence citations, and walk-away signals. MEDDIC qualification criteria with evidence grades. GTM tool stack with build/configure effort per tool. GTM-to-delivery handoff spec. Channel + niche kill switches with specific metrics and triggers. Founder resilience tracking (Bob-hours vs. revenue). Competitive GTM response timeline (4 phases). Nurture sequence (6 touches, Day 1-60). GTM pre-mortem with niche-specific failure narrative (§13.9.1). First-90-days week-by-week execution calendar (§13.9.2). Content/SEO roadmap (§13.9.3).
 
-**Excellent:** All required channel-persona combinations have verbatim messages. Objection responses cite specific evidence sections. Funnel model ranges are anchored to published B2B benchmarks with sources and dates. Confidence calibration is explicit — LOW confidence at zero clients, upgrade path defined. The 90-day calendar is specific enough that Bob could execute it without asking "what do I do this week?" The GTM pre-mortem names specific, niche-relevant failure modes. The competitive response timeline names likely competitor actions and ClarityRev's counter at each phase. Commission rep onboarding script is verbatim.
+**Excellent:** All required channel-persona combinations have verbatim messages. Objection responses cite specific evidence sections. Funnel model ranges are anchored to published B2B benchmarks with sources and dates. Confidence calibration is explicit — LOW confidence at zero clients, upgrade path defined. The 90-day calendar is specific enough that Bob can execute it without asking "what do I do this week?" The GTM pre-mortem names specific, niche-relevant failure modes. The competitive response timeline names likely competitor actions and ClarityRev's counter at each phase. Commission rep onboarding script is verbatim.
 
-**ADVERSARIAL CHECK (extended):** "If the founders execute this GTM plan perfectly for 90 days and generate zero revenue — at what day do they know it's not working? What's the specific metric and trigger? If the answer is 'we'll figure it out,' the kill switches aren't specific enough. Every founder-hour of GTM is borrowed against runway. Is Bob's time-budget realistic — does 40 hrs/week actually break down into the activities listed, or is there hidden overhead (internal meetings, email, admin) that consumes 30% before any selling happens? If the warm network produces 3 Snapshot requests instead of the expected 20, at what week does the plan pivot? Is that pivot specified?"
+**ADVERSARIAL CHECK (extended):** "If the founders execute this GTM plan perfectly for 90 days and generate zero revenue — at what day do they know it's not working? What's the specific metric and trigger? If the answer is 'we'll figure it out,' the kill switches aren't specific enough. Every founder-hour of GTM is borrowed against runway. Is Bob's time-budget realistic — does 20 hrs/week actually break down into the activities listed, or is there hidden overhead (internal meetings, email, admin) that consumes 30% before any selling happens? If the warm network produces 3 Snapshot requests instead of the expected 20, at what week does the plan pivot? Is that pivot specified?"
 
 ---
 
 #### 13.10 Sales Playbook Extract (MANDATORY per Canvas)
 
-**Purpose:** Each completed canvas must produce a one-page "Sales Extract" that consolidates Bob's daily operational information. Bob should not need to navigate 15 sections to find what to do today. This extract is the bridge between strategy document and daily execution.
+**Purpose:** Each completed canvas must produce a one-page "Sales Extract" that consolidates Bob's daily operational information. Bob MUST not need to navigate 15 sections to find what to do today. This extract is the bridge between strategy document and daily execution.
 
 **The Sales Extract consolidates from across the canvas:**
 
@@ -3070,24 +3085,43 @@ Reference §1.6 RIOS applicability. Skip scoring for any stage marked SKIP in §
 
 | Gate | Result | Evidence Grade | Math / Justification |
 |---|---|---|---|
-| EUR 500K net profit path with leverage? | PASS/FAIL | `[S]` at zero clients | **Show the explicit math:** At [N] clients × EUR [X] avg monthly revenue × 12 months = EUR [Y] annual revenue. At [Z]% gross margin = EUR [Y×Z%] gross profit. Target: EUR 715-910K revenue → EUR 500K net profit. Clients needed at breakeven: [N]. Time to reach breakeven: [N] months at [X] new clients/month. Is this achievable within 24 months? |
+| EUR 500K net profit path with leverage? | PASS/FAIL | `[S]` at zero clients | **Show the explicit net profit math (CORRECTED):** Net Annual Profit = (Clients × ARPU × 12) × GrossMargin − AnnualFixedCosts. See EUR 500K Net Profit Gate template below. Target: ≥ EUR 500K Net Annual Profit at ≤50 clients within 24 months. |
 | Scalable & productizable? | PASS/FAIL | From §10.12.1, §11.17 | Can this be delivered without bespoke work per client? What % is automated vs. manual? Reference §11.17 automation feasibility. |
 | In-bounds (B2B, not consumer/SMB)? | PASS/FAIL | `[P]` from §1.2 | Verify against §1.2 MECE boundaries. |
 | Fits Revenue Intelligence category? | PASS/FAIL | `[P]` from §1.1, §6B | Is this intelligence-that-drives-revenue, delivered in-system? Reference §6B signal catalog as evidence. |
 
-**EUR 500K gate — explicit revenue math template (MANDATORY):**
+**EUR 500K Net Profit Gate — explicit math template (CORRECTED — was gross-profit-only):**
 
 ```
+NET PROFIT FORMULA:
+Net Annual Profit = (Clients × ARPU × 12) × Gross Margin − Annual Fixed Costs
+
 ASSUMPTIONS:
 - Target clients at steady state: [N]
-- Avg monthly revenue per client: EUR [X] (from §10.2 core recurring + §10.3 expansion)
-- Annual revenue per client: EUR [X × 12]
-- Blended gross margin: [Y%] (from §7.4, §10.2)
-- Annual gross profit per client: EUR [X × 12 × Y%]
-- Total annual gross profit at [N] clients: EUR [N × X × 12 × Y%]
-- Target: EUR 500K net profit → need EUR [500K / Y%] gross profit → [N] clients
-- Time to reach [N] clients at [Z] new clients/month (from §13.2 funnel model): [N÷Z] months
+- ARPU (Average Revenue Per User, monthly): EUR [X] (from §10.2 core recurring + §10.3 expansion)
+- Gross Margin: [Y%] = (Revenue − Variable Costs) / Revenue
+  Variable costs include: Firecrawl credits, DataForSEO credits, Clay enrichment,
+  Claude API tokens, CRM subscription per client
+
+ANNUAL FIXED COSTS:
+- Core tools & infra: EUR 6,000/yr (Firecrawl, DataForSEO, hosting, domains)
+- Wesley fractional CTO: EUR 24,000/yr (opportunity cost of time)
+- Bob/Adriaan: EUR 0 (founders, no salary until profitability)
+- Buffer: 20% of subtotal = EUR 6,000/yr
+- TOTAL ANNUAL FIXED COSTS: EUR 36,000/yr
+
+CALCULATION:
+- Gross revenue at [N] clients: EUR [N × X × 12]
+- Gross profit at [N] clients: EUR [N × X × 12 × Y%]
+- Net annual profit at [N] clients: EUR [N × X × 12 × Y% − 36,000]
+- Clients needed for EUR 500K net profit: [(500,000 + 36,000) ÷ (X × 12 × Y%)]
+- Time to reach breakeven at [Z] new clients/month (from §13.2): [N÷Z] months
 - IS THIS ACHIEVABLE WITHIN 24 MONTHS? YES / NO / BORDERLINE
+
+GATE RULES:
+- If the model requires >50 clients OR >24 months → flag as EXTENDED-TIMELINE
+- If the model requires >100 clients → flag as REQUIRES-VC-SCALE (infeasible for bootstrapped)
+- If Net Annual Profit < EUR 500K at 50 clients → FAIL
 ```
 
 `[S]` until validated with actual client economics. All inputs sourced from prior sections.
@@ -3109,17 +3143,23 @@ Rate each dimension 1-5 using the calibration anchors above. Every score must cr
 | **Distributability** | | From §5, §13.1 | §5 (ecosystem & distribution), §13.1 (channel allocation) | Can an aggregator carry this? How many warm aggregator paths exist? Reference specific aggregators from §5. |
 | **Compounding** | | From §1.6, §10.4 | §1.6 (RIOS moat assessment), §10.4 (moat trajectory) | How much does each client feed the moat? At what client count does compounding begin? Reference §10.4 trajectory. |
 
-**RIOS Score Calculation:**
+**RIOS Score Calculation (Additive Mean Fix):**
+
+Replace the multiplicative ratio with an additive mean. Invert the three denominator dimensions so that higher input scores always produce a higher RIOS score:
 
 ```
-Perceived Value = (Quantified Outcome × Proven Likelihood × Strategic Fit) 
-                / (Time-to-Value × Org Friction × Perceived Risk)
-               = ([A] × [B] × [C]) / ([D] × [E] × [F])
-               = [X] / [Y]
-               = [PV]
+TTV_prime = 6 - Time-to-Value
+OF_prime  = 6 - Organizational Friction
+PR_prime  = 6 - Perceived Risk
+```
 
-RIOS Score = Perceived Value × Distributability × Compounding
-           = [PV] × [G] × [H]
+All 8 dimensions contribute equally, range 1-5:
+
+```
+RIOS Score = mean(Quantified Outcome, Proven Likelihood, Strategic Fit, 
+                  TTV_prime, OF_prime, PR_prime,
+                  Distributability, Compounding)
+           = mean([A], [B], [C], [D'], [E'], [F'], [G], [H])
            = [RIOS]
 
 Evidence Grade: [Weakest grade among A-H]
@@ -3225,7 +3265,7 @@ This comparison is `[H]` at best — competitor scoring is from external observa
 
 ### SECTION 15: Open Questions & Validation Plan
 
-**Purpose:** Honestly flag what is unknown and specify exactly how to resolve each unknown. This is the honesty section — it prevents "unknown unknowns" from killing the niche later and forces the agent to confront what they don't know. Every niche canvas should have at least 5 open questions. If it doesn't, the agent didn't research deeply enough.
+**Purpose:** Honestly flag what is unknown and specify exactly how to resolve each unknown. This is the honesty section — it prevents "unknown unknowns" from killing the niche later and forces the agent to confront what they don't know. Every niche canvas MUST have at least 5 open questions. If it doesn't, the agent did not research deeply enough and must revise the canvas.
 
 **Applied lenses:** Research Analyst (confidence calibration, unknown unknowns, evidence inventory), Strategy Consultant (decision framework under uncertainty, prioritization), Red-Team (most dangerous unknown, pre-mortem, what's being hidden), GTM Architect (validation ownership, timeline)
 
@@ -3246,8 +3286,8 @@ Before listing open questions, tally every `[P]`, `[E]`, `[H]`, and `[S]` claim 
 | **Total** | **[N]** | **100%** | |
 
 **Canvas evidence health check:**
-- If >50% of claims are `[H]` or `[S]`: canvas is HIGH-UNCERTAINTY. Verdict should be VALIDATE FIRST, not LAUNCH PENDING.
-- If >70% of claims are `[H]` or `[S]`: canvas is VERY-HIGH-UNCERTAINTY. Even VALIDATE FIRST may be premature — consider whether the niche is researchable with available sources.
+- If >50% of claims are `[H]` or `[S]`: canvas is HIGH-UNCERTAINTY. Verdict MUST be VALIDATE FIRST, not LAUNCH PENDING. An agent that assigns LAUNCH PENDING to a HIGH-UNCERTAINTY canvas has violated methodology rules.
+- If >70% of claims are `[H]` or `[S]`: canvas is VERY-HIGH-UNCERTAINTY. Even VALIDATE FIRST may be premature — the agent MUST evaluate whether the niche is researchable with available sources. If the niche cannot be researched with available sources, downgrade verdict to INCONCLUSIVE.
 - If >20% of claims are `[S]`: canvas has significant speculation. Build decisions based on this canvas carry high risk.
 - If <10% of claims are `[P]`: the canvas lacks a factual foundation. More primary research needed.
 - **Important:** Also monitor the `[H]` threshold. The 50% rule on `[S]` alone creates a perverse incentive to pad with `[H]` claims to dilute the `[S]` ratio. The combined `[H]+[S]` percentage is the honest measure.
@@ -3276,7 +3316,7 @@ Rank questions by: "How much does the decision depend on this?" ÷ "What does it
 | 5 | ... | | | | | | | Nice-to-know | |
 
 **Validation owner capacity (binding):**
-- **Bob:** Can run buyer conversations, attend expert interviews, validate messaging. 40 hrs/week but primary focus is selling. Max 5 hrs/week on validation activities.
+- **Bob:** Can run buyer conversations, attend expert interviews, validate messaging. 20 hrs/week but primary focus is selling. Max 3 hrs/week on validation activities.
 - **Adriaan:** Can run data analysis, competitive demos, enrichment validation. 30 hrs/week total; max 10 hrs/week on validation activities (remainder consumed by onboarding + data ops + overflow calls per §7.4).
 - **Wesley:** Can validate technical feasibility, API access, build effort. Does NOT do buyer conversations. 40 hrs/week on building; validation is secondary.
 
@@ -3288,7 +3328,7 @@ Rank questions by: "How much does the decision depend on this?" ÷ "What does it
 
 **The single most dangerous unknown in this canvas:** [State it explicitly.] This is the unknown that, if resolved negatively, would change the niche verdict from LAUNCH PENDING or VALIDATE FIRST to NO-GO.
 
-**Unknown pre-mortem:** "It's 6 months from now. We resolved the top 5 open questions. The answers were worse than expected on [most dangerous unknown]. Specifically: [what we learned]. As a result: [what happens to the niche thesis]. The niche is now NO-GO. What did we miss in the initial canvas that should have warned us?"
+**Unknown pre-mortem:** "It's 6 months from now. We resolved the top 5 open questions. The answers were worse than expected on [most dangerous unknown]. Specifically: [what we learned]. As a result: [what happens to the niche thesis]. The niche is now NO-GO. What did we miss in the initial canvas that must have warned us?"
 
 **Early warning indicators:** What signals in the first 90 days would indicate this unknown is resolving negatively? "If [metric] is below [threshold] within 90 days, the most dangerous unknown is trending negative. Escalate to founders."
 
@@ -3331,7 +3371,7 @@ What evidence would change the recommendation for this niche? Triggers must be s
 - **Downgrade trigger (LAUNCH PENDING → VALIDATE FIRST, or VALIDATE FIRST → CONDITIONAL):** What would make this niche LESS attractive? "Conversion rate <Y% after 20 Snapshots." "Guarantee invocation rate >30%." "Primary CRM platform announces competing feature."
 - **Kill trigger (→ NO-GO):** What would make us abandon this niche? "Zero paying clients after 6 months of active outreach (per §13.7 niche kill switch)." "Two competitors launch identical managed services within 6 months." "Primary CRM platform changes ToS to prohibit third-party AI access." "Most dangerous unknown (§15.3) resolves negatively AND the thesis cannot be salvaged."
 
-- **Trigger for revisiting (time-based):** "Re-evaluate this niche canvas in [N] months. By then, [what should have changed? — e.g., 'benchmark data reaches 50 companies,' '2 case studies published,' '10 paying clients']."
+- **Trigger for revisiting (time-based):** "Re-evaluate this niche canvas in [N] months. By then, [what MUST have changed? — e.g., 'benchmark data reaches 50 companies,' '2 case studies published,' '10 paying clients']. If the specified changes have not occurred, the canvas auto-downgrades one verdict level."
 - **Trigger for canvas refresh:** "If this canvas is >90 days old AND no validation activities have been completed, refresh the canvas before making any build decisions. Competitive data, pricing, and market conditions change."
 
 ---
@@ -3380,7 +3420,7 @@ Additionally, every `[S]` and critical `[H]` claim from §6A and §6B must appea
 
 **Excellent:** The evidence inventory is an honest count — not estimated. The decision-impact/cost ratio is calculated, not intuited. The most dangerous unknown is specific enough that a founder reading it would say "yes, if that's wrong, we shouldn't do this." The validation experiment is falsifiable — it can be proven wrong, not just "we'll know more." The validation timeline respects founder capacity. The decision-tree covers all branches (success, addressable fail, non-addressable fail, staleness). Every open question has a named owner — not "the team."
 
-**ADVERSARIAL CHECK (extended):** "Are there at least 5 open questions? If fewer, the agent didn't research deeply enough. Is the evidence inventory an honest count — or does it undercount `[H]`/`[S]` to make the canvas look more evidenced than it is? Is the most dangerous unknown genuinely load-bearing — if resolved negatively, does the verdict actually change? Or is it a safe unknown that leaves the thesis intact either way? Are validation activities assigned to specific people with specific hours, or is everything 'Bob will figure it out'? Bob has 40 hrs/week for selling — how many of those hours are allocated to validation? If the answer is zero, the validation plan is aspirational, not operational. If the canvas is >90 days old with no validation progress, does the verdict automatically downgrade? If not, we're making build decisions on stale assumptions."
+**ADVERSARIAL CHECK (extended):** "Are there at least 5 open questions? If fewer, the agent didn't research deeply enough. Is the evidence inventory an honest count — or does it undercount `[H]`/`[S]` to make the canvas look more evidenced than it is? Is the most dangerous unknown genuinely load-bearing — if resolved negatively, does the verdict actually change? Or is it a safe unknown that leaves the thesis intact either way? Are validation activities assigned to specific people with specific hours, or is everything 'Bob will figure it out'? Bob has 20 hrs/week for selling — how many of those hours are allocated to validation? If the answer is zero, the validation plan is aspirational, not operational. If the canvas is >90 days old with no validation progress, does the verdict automatically downgrade? If not, we're making build decisions on stale assumptions."
 
 **Cross-references to update:**
 - §6.5: Signal-to-revenue validation → §15.8 required entries
@@ -3430,7 +3470,7 @@ Execute in this order. Do not skip steps. Do not reorder. Each phase references 
 13. **SERP/keyword analysis** (DataForSEO Keywords API): Batch 50 keywords per competitor, single batched request, $0.03. See pipeline Step 2.5.
 14. **Buyer language** (Reddit Research MCP + Firecrawl /search for review quotes): Use Reddit Research MCP as PRIMARY for Reddit data (official API, no auth, ToS-compliant). Firecrawl /search for public Reddit pages as fallback. Do NOT create throw-away Reddit accounts. Do NOT use Firecrawl /interact for authenticated Reddit scraping.
 
-**Data quality gate (BINDING):** After Phase 2, verify: (a) ≥3 competitors with pricing anchors (KT-3 gate), (b) ≥20 reviews across ≥3 competitors, (c) ≥2 independent market sizing sources. If any gate fails, flag as INSUFFICIENT_DATA. The deterministic evidence grade engine (DATA-OPERATIONS-ARCHITECTURE.md §6.2) assigns grades — agents do NOT self-grade claims.
+**Data quality check (BINDING):** After Phase 2, check: (a) Target: ≥3 competitors with pricing anchors — if fewer exist, document all available competitors with SOURCE_UNAVAILABLE for missing data (KT-3 check), (b) ≥20 reviews across ≥3 competitors — if fewer reviews exist, document the search methodology, (c) ≥2 independent market sizing sources — if only 1 source found, flag as INSUFFICIENT_DATA. The deterministic evidence grade engine (DATA-OPERATIONS-ARCHITECTURE.md §6.2) assigns grades — agents do NOT self-grade claims.
 
 **Phase 3: Commercial Design (Pipeline §4.3 — ~15 credits, ~3 min)**
 
@@ -3489,7 +3529,7 @@ This section replaces the generic "web search operators" from earlier methodolog
 
 ### 3.3 Cross-Reference Requirements
 
-Every claim should be cross-referenced where possible. The deterministic evidence grade engine (DATA-OPERATIONS-ARCHITECTURE.md §6.2) enforces this mechanically:
+Every claim MUST be cross-referenced against at least one independent source. If cross-referencing is impossible (niche with no public data), document the attempts and mark the claim as SOURCE_UNAVAILABLE. The deterministic evidence grade engine (DATA-OPERATIONS-ARCHITECTURE.md §6.2) enforces this mechanically:
 
 - **Market size:** Cross-reference top-down (total industry spend × niche %) with bottom-up (company count × avg spend). If they differ by more than 2×, investigate and flag the discrepancy.
 - **Competitor pricing:** Verify pricing claims against 2+ sources (website, G2, review site, third-party article). For `[P]` grade: requires 2+ INDEPENDENT sources with DIFFERENT root domains owned by DIFFERENT entities. G2 + Capterra (same parent: G2.com, Inc.) = NOT independent.
@@ -3556,7 +3596,7 @@ Each section must pass its gates before the canvas moves to scoring.
 - **ADVERSARIAL CHECK:** Is the EUR number visceral enough that a buyer would say "that's me"? If it reads like a consultant's estimate, it needs more specificity.
 
 #### Section 4: Competitive Landscape
-- **BLOCKING:** 3+ direct competitors with pricing. Internal/DIY alternative analyzed. White space identified.
+- **BLOCKING:** 3+ direct competitors with pricing (target; if fewer exist in niche, document all found). Internal/DIY alternative analyzed. White space identified.
 - **MAJOR:** Strategy Canvas or equivalent visual. Adjacent substitutes listed. Pricing landscape summarized (min/median/max).
 - **NICE:** Competitive response modeled. Porter's Five Forces for the niche.
 - **ADVERSARIAL CHECK:** Is the DIY alternative HONESTLY analyzed, or dismissed? Most B2B buyers solve problems with spreadsheets; if the canvas doesn't explain why they'd leave spreadsheets, it's incomplete.
@@ -3574,7 +3614,7 @@ Each section must pass its gates before the canvas moves to scoring.
 - **MAJOR:** Signal ID naming convention followed across both sections.
 
 **§6A Sales Trigger Map:**
-- **BLOCKING:** §6A.0 ACH table with ≥10 candidate triggers scored, bottom 5 rejection rationale. 5 triggers identified with: evidence grades on all factual claims, SPICED mapping, pain dimension traceability (§3), who feels them, detectable signal, outreach timing to day-range. Detection feasibility assessed per signal. Bob's capacity constraint modeled in §6A.3 with triage tiebreakers.
+- **BLOCKING:** §6A.0 ACH table with ≥10 candidate triggers scored (target; if fewer exist document search methodology), bottom 5 rejection rationale. 5 triggers identified with: evidence grades on all factual claims, SPICED mapping, pain dimension traceability (§3), who feels them, detectable signal, outreach timing to day-range. Detection feasibility assessed per signal. Bob's capacity constraint modeled in §6A.3 with triage tiebreakers.
 - **MAJOR:** Trigger cascade chains mapped. §6A.3 tier table with niche-specific examples, verbatim opening lines, and capacity-aware responses. Dedup logic with explicit windows. "Signal doesn't fire" AND "signals fire systematically wrong" scenarios covered.
 - **NICE:** Calendar of trigger events across year. False positive rate estimated per trigger. Detection recall estimated. Competitive detection lead time assessed per trigger.
 - **ADVERSARIAL CHECK:** Are these triggers the BUYER cares about, or is this ClarityRev's buying signal that isn't the buyer's problem? Can Bob physically execute the Tier 1 response when 5 triggers fire simultaneously? If triggers fire but are systematically WRONG, at what point does Bob stop trusting the system?
@@ -3600,21 +3640,21 @@ Each section must pass its gates before the canvas moves to scoring.
 
 #### Section 8: Free Entry Services
 
-- **BLOCKING:** Free layer strategic job stated (attract volume / pre-qualify / educate market / demonstrate superiority). Competitor free layer audit (§8.1) with ≥3 competitors, source-verified (URL + date), Match/Differentiate/Skip with strategic intent. Competitive free-layer Strategy Canvas (§8.1a) completed. ≥3 free services designed across ≥2 tiers (§8.2), each with: evidence grades on all fields, pain traceability (§3), signal traceability (§6B), competitive decision, specific output, data requirements, turnaround, conversion hook, Bob's Usage (verbatim), top 2 objection responses (verbatim), MEDDIC mapping, conversion model (rate + time + stall point), delivery cost, build spec (tools/APIs/effort/dependencies/cost per run), and niche-name-swap test. The Snapshot (Tier 3 data-connected) is mandatory. Free-to-paid conversion design (§8.4) with per-tier post-completion sequence and nurture for non-converters. Free layer pre-mortem (§8.5.1) with specific failure narrative. Free anchoring risk assessed with niche-specific mitigations (§8.5.2). Breakeven analysis (§8.5.3) with kill switch at 50% of breakeven for 6 months. Free-tier data retention & privacy spec (§8.6.3).
+- **BLOCKING:** Free layer strategic job stated (attract volume / pre-qualify / educate market / demonstrate superiority). Competitor free layer audit (§8.1) with ≥3 competitors (target; if fewer exist document all found), source-verified (URL + date), Match/Differentiate/Skip with strategic intent. Competitive free-layer Strategy Canvas (§8.1a) completed. ≥3 free services designed across ≥2 tiers (§8.2), each with: evidence grades on all fields, pain traceability (§3), signal traceability (§6B), competitive decision, specific output, data requirements, turnaround, conversion hook, Bob's Usage (verbatim), top 2 objection responses (verbatim), MEDDIC mapping, conversion model (rate + time + stall point), delivery cost, build spec (tools/APIs/effort/dependencies/cost per run), and niche-name-swap test. The Snapshot (Tier 3 data-connected) is mandatory. Free-to-paid conversion design (§8.4) with per-tier post-completion sequence and nurture for non-converters. Free layer pre-mortem (§8.5.1) with specific failure narrative. Free anchoring risk assessed with niche-specific mitigations (§8.5.2). Breakeven analysis (§8.5.3) with kill switch at 50% of breakeven for 6 months. Free-tier data retention & privacy spec (§8.6.3).
 - **MAJOR:** Distribution specified per service (§8.3) with channel, aggregator-native version, distribution cost, and channel experiment design. Free service health monitoring with metrics and thresholds (§8.6.1). Multi-tenant scaling modeled at 10/50/200 simultaneous users (§8.6.2). Free service versioning policy (§8.6.4). Competitor exploitation assessment with defenses (§8.5.4). Demand validation per free service.
 - **NICE:** SEO/SEM strategy with search volume data. At least one free service is a deliberate Match (proving competitor audit informed design). Bob's Usage fields are verbatim-ready for a call today. Build spec per service complete enough for sprint estimation.
 - **ADVERSARIAL CHECK:** Would a busy executive in this niche actually spend 5 minutes to get this free number? If the answer requires them to care about ClarityRev before seeing value, the friction is too high. Is the free anchoring risk honestly assessed — "you found it for free, why pay for the fix?" — or hand-waved? If 500 Snapshots produce 5 paid conversions, at what month do we kill the free service? Is that kill switch specified? What prevents a competitor from copying the free Snapshot in 3 months?
 
 #### Section 9: Paid Entry Services
 
-- **BLOCKING:** Paid portfolio architecture stated (ladder/menu/sequence). Competitor paid audit (§9.1) with ≥3 competitors, source-verified (URL + date), Match/Differentiate/Skip with strategic intent. Competitive paid-layer Strategy Canvas (§9.1a). ≥3 paid services designed (§9.2) with portfolio economics summary, each with: evidence grades on all fields, service type + portfolio role, pain traceability (§3), signal traceability (§6B), competitive decision, price with competitor anchoring + strategic pricing rationale, detailed scope, time-to-value, risk reversal with guarantee financial exposure, evidence needed, purchase psychology + price sensitivity, delivery method + automation level, build spec (workflows/APIs/effort/dependencies/cost), Bob's Usage (verbatim), top 3 objection responses (verbatim), MEDDIC mapping, sales cycle, conversion model (free→paid + paid→recurring rates), client data handling, and niche-name-swap test. Pricing justification (§9.4) with strategic pricing position, competitor anchoring, ROI justification, purchase authority fit, and displacement comparison. Paid service pre-mortem (§9.5.1). Guarantee financial exposure model (§9.5.2) with worst-case monthly and annualized exposure. Minimum viable paid portfolio sequence (§9.5.3). Competitor undercutting scenario with defenses (§9.5.4).
+- **BLOCKING:** Paid portfolio architecture stated (ladder/menu/sequence). Competitor paid audit (§9.1) with ≥3 competitors (target; if fewer exist document all found), source-verified (URL + date), Match/Differentiate/Skip with strategic intent. Competitive paid-layer Strategy Canvas (§9.1a). ≥3 paid services designed (§9.2) with portfolio economics summary, each with: evidence grades on all fields, service type + portfolio role, pain traceability (§3), signal traceability (§6B), competitive decision, price with competitor anchoring + strategic pricing rationale, detailed scope, time-to-value, risk reversal with guarantee financial exposure, evidence needed, purchase psychology + price sensitivity, delivery method + automation level, build spec (workflows/APIs/effort/dependencies/cost), Bob's Usage (verbatim), top 3 objection responses (verbatim), MEDDIC mapping, sales cycle, conversion model (free→paid + paid→recurring rates), client data handling, and niche-name-swap test. Pricing justification (§9.4) with strategic pricing position, competitor anchoring, ROI justification, purchase authority fit, and displacement comparison. Paid service pre-mortem (§9.5.1). Guarantee financial exposure model (§9.5.2) with worst-case monthly and annualized exposure. Minimum viable paid portfolio sequence (§9.5.3). Competitor undercutting scenario with defenses (§9.5.4).
 - **MAJOR:** Paid service health monitoring with metrics and thresholds (§9.6.1). Paid service versioning policy (§9.6.2). Portfolio-level revenue mix and margin by service. Every paid service's price lands under the champion's solo approval threshold per §2.3.
 - **NICE:** Guarantee invocation triggers and tracking system specified. Client satisfaction monitoring. Service margin trajectory modeled. At least one service is a deliberate Match. Bob's Usage fields are verbatim-ready for a call today.
 - **ADVERSARIAL CHECK:** Is the risk reversal real, or is it just words? "Satisfaction guaranteed" doesn't reverse risk in B2B. "We don't get paid unless we recover EUR X" does — but can ClarityRev afford it? The guarantee exposure model (§9.5.2) forces this math. Is the single most dangerous assumption surfaced: that buyers will pay for the fix after getting the diagnosis for free? Is the minimum viable portfolio respected — are we building ONE paid service first? If the competitor undercutting scenario happens at 50% of our price, do we have a defense beyond "our quality is better"?
 
 #### Section 10: Core Recurring Services
 
-- **BLOCKING:** Recurring portfolio strategy stated. Competitor recurring audit (§10.1) with ≥3 competitors, source-verified, Match/Differentiate/Skip with strategic intent. Competitive recurring Strategy Canvas (§10.1a). Core recurring service designed (§10.2) with: evidence grades on all fields, strategic rationale for recurring vs. one-time, competitive decision, price with tiering driver + competitor anchoring, detailed scope (included/excluded), relationship to paid services (§9), LTV model (LTV/CAC >3×), paid→recurring conversion model, onboarding process + automation (§10.8.1), churn prevention (niche-specific, not generic), Bob's Usage (verbatim), top 3 objection responses (verbatim), niche-name-swap test. Expansion architecture (§10.3) with ≥2 paths, specific expansion triggers from §6B.4, expansion conversion math. Moat connection (§10.4) with quantified trajectory at 5/20/50/100 clients. Value delivery cadence (§10.7) with 6 timeline checkpoints + client monthly experience. "Why Cancel?" pre-mortem (§10.10) with early warning signals per reason. Churn stress test at 4 scenarios (§10.11.2). Minimum viable recurring sequence (§10.11.3). Recurring service health monitoring (§10.12.3) with 7 metrics + thresholds + alerts.
+- **BLOCKING:** Recurring portfolio strategy stated. Competitor recurring audit (§10.1) with ≥3 competitors (target; if fewer exist document all found), source-verified, Match/Differentiate/Skip with strategic intent. Competitive recurring Strategy Canvas (§10.1a). Core recurring service designed (§10.2) with: evidence grades on all fields, strategic rationale for recurring vs. one-time, competitive decision, price with tiering driver + competitor anchoring, detailed scope (included/excluded), relationship to paid services (§9), LTV model (LTV/CAC >3×), paid→recurring conversion model, onboarding process + automation (§10.8.1), churn prevention (niche-specific, not generic), Bob's Usage (verbatim), top 3 objection responses (verbatim), niche-name-swap test. Expansion architecture (§10.3) with ≥2 paths, specific expansion triggers from §6B.4, expansion conversion math. Moat connection (§10.4) with quantified trajectory at 5/20/50/100 clients. Value delivery cadence (§10.7) with 6 timeline checkpoints + client monthly experience. "Why Cancel?" pre-mortem (§10.10) with early warning signals per reason. Churn stress test at 4 scenarios (§10.11.2). Minimum viable recurring sequence (§10.11.3). Recurring service health monitoring (§10.12.3) with 7 metrics + thresholds + alerts.
 - **MAJOR:** Competitive retention defense (§10.9) with switching cost math. Onboarding-to-recurring conversion mechanism chosen with rationale. Service tiering driver (§10.6) with objective boundaries + competitor anchoring. Land-and-expand revenue trajectory (§10.5) with 24-month milestones + step-up triggers. Delivery automation spec (§10.12.1) per recurring component. Multi-tenant data isolation (§10.12.2).
 - **NICE:** Moat quantified with accuracy improvements at each client-count threshold. Churn preventive measures tied to early warning signals. Client provisioning fully automated where possible. LTV/CAC >5× at target churn rate. At least one expansion path traces to a specific §6B.4 signal combination. Client monthly experience description reads like a product marketing page.
 - **ADVERSARIAL CHECK:** Why wouldn't the buyer cancel after 3 months? If the churn prevention answer is "they love it," that's not a mechanism. What specific observed behavior indicates at-risk accounts? Is the recurring service genuinely different from the paid standalone, or just "the same thing but monthly"? If churn hits 3%/month, does the LTV model still close? Is the minimum viable recurring concept respected — are we building recurring before validating one-time? What would the founders' most skeptical advisor say?
@@ -3658,22 +3698,22 @@ Each section must pass its gates before the canvas moves to scoring.
 
 | Gate | What | Verdict |
 |---|---|---|
-| **Completeness** | All 15 sections present, all fields filled | PASS/FAIL — FAIL if any section is missing |
-| **Evidence Integrity** | No ungraded claims. >50% of claims at `[E]` or higher | PASS/FAIL — FAIL if majority of claims are `[H]` or `[S]` without flagging |
+| **Completeness** | All 15 sections present, all fields addressed. SOURCE_UNAVAILABLE is valid. | PASS/FAIL — FAIL if any section is missing entirely (not addressed) |
+| **Evidence Integrity** | No ungraded claims. Evidence confidence flag reported. | PASS/FAIL — FAIL if >50% of claims are ungraded |
 | **Coherence** | Sections link logically: pain → trigger → snapshot → paid entry → recurring. No contradictions. | PASS/FAIL — FAIL if a section contradicts another without explanation |
-| **Falsifiability** | The canvas could be proven wrong by evidence | PASS/FAIL — FAIL if every claim is unfalsifiable (too vague to test) |
+| **Falsifiability** | The canvas can be proven wrong by evidence | PASS/FAIL — FAIL if every claim is unfalsifiable (too vague to test) |
 | **MECE Boundaries** | Niche boundaries are mutually exclusive and collectively exhaustive | PASS/FAIL — FAIL if boundaries overlap with another assessed niche |
-| **Decision-Readiness** | A founder could decide "enter" or "skip" this niche based on the canvas | PASS/FAIL — FAIL if after reading the canvas the answer is still "it depends" without a clear path to resolve |
+| **Decision-Readiness** | A founder can decide "enter" or "skip" this niche based on the canvas | PASS/FAIL — FAIL if after reading the canvas the answer is still "it depends" without a clear path to resolve |
 | **Minimum Viable Sequencing** | Canvas respects build sequencing: Diagnose→Prove validated before Commit designed; one paid service validated before second/third built; Sprint validated before recurring built | PASS/FAIL — FAIL if canvas has LAUNCH PENDING verdict but §9.5.3 hinge paid service is not designated for first build, or if §10.11.3 minimum viable recurring is not respected |
 | **Conversion Model Reconciliation** | §7.3.1 journey transition rates compound to match §13.2 channel-specific end-to-end rates within ±20% tolerance | PASS/FAIL — FAIL if the two models produce end-to-end rates that diverge by >20% without explanation |
 | **Pricing Consistency** | Price stated in §7.2a (pricing ladder) matches price in §9.2 (paid service), §10.2 (recurring service), and §7.4 (offer economics) | PASS/FAIL — FAIL if any price mismatch >10% without explanation |
 
 ### 4.3 Agent Self-Audit Checklist (run before submitting)
 
-1. [ ] All 15 sections are present and filled (§6 includes: §6.0, §6A, §6B, §6.8 — all four parts)
+1. [ ] All 15 sections are present and addressed (SOURCE_UNAVAILABLE is valid; §6 includes: §6.0, §6A, §6B, §6.8 — all four parts)
 2. [ ] Every quantified claim has an evidence grade `[P/E/H/S]`
 3. [ ] Niche boundaries are MECE
-4. [ ] §6A.0 ACH table with ≥10 candidate triggers and rejection rationale
+4. [ ] §6A.0 ACH table with ≥10 candidate triggers scored (target) and rejection rationale
 5. [ ] §6A.3 Bob's capacity constraint modeled with triage tiebreakers
 6. [ ] §6B.8 signal confidence calibration completed for all Tier 1+2 signals
 7. [ ] §6B.7 demo narrative with 3-5 signals in sequence
@@ -3778,7 +3818,7 @@ The following workflow types are available. Not every workflow fits every niche.
 **Evidence grade for output:** Aggregator existence: `[P]`. Warm access: `[P]` only if founder confirmed, else `[H]`.
 
 #### W4: Pricing Landscape Analysis
-**Purpose:** Understand what buyers in this niche pay for similar services and where ClarityRev should price.
+**Purpose:** Understand what buyers in this niche pay for similar services and determine where ClarityRev MUST price relative to competitors, anchored to competitor evidence from §4.
 **Input:** Competitive list, buyer persona, purchase authority thresholds
 **Process:**
 1. Extract pricing from competitor websites (visit each, note pricing page content)
@@ -3863,7 +3903,7 @@ The following workflow types are available. Not every workflow fits every niche.
 5. Red-team check: what's the weakest assumption in the canvas? Is it flagged?
 **Output:** Canvas quality report with flagged issues and suggested fixes
 **Tool/API chain:** Evidence grade engine (DATA-OPERATIONS-ARCHITECTURE.md §6.2 — deterministic grade assignment) → Freshness audit script (DATA-OPERATIONS-ARCHITECTURE.md Appendix B) → Cross-reference verification (canvas-level gates per Part 3 §4.2) → Falsifiability check → Red-team adversarial checklist (Part 3) → Canvas quality report
-**Human review checkpoint:** The agent should fix all flagged issues before the canvas is considered complete. If a fix can't be made in the current session, it must be logged in section 15.
+**Human review checkpoint:** The agent MUST fix all flagged issues before the canvas is considered complete. If a fix can't be made in the current session, it must be logged in section 15.
 **Evidence grade for output:** Internal consistency: `[P]` (objective check). Quality assessment: `[P]` (agent's professional judgment).
 
 ### 5.2 Workflow Selection Guide
@@ -3923,7 +3963,7 @@ When describing the LLM role in any workflow, specify ALL of:
 
 **Agent Non-Determinism Assumption (BINDING):** Claude Code agents are non-deterministic components. The same prompt can produce different outputs on different runs. Every quality control mechanism MUST include either: (a) an independent observer that can verify the agent's output without relying on the agent's own computation (e.g., a separate agent re-fetching 10% of source URLs and comparing content hashes independently — see DATA-OPERATIONS-ARCHITECTURE.md audit recommendation Change #11), or (b) a mathematical invariant that the agent cannot plausibly fake (e.g., git history of trace-maps, checksums computed by a separate process). **The agent does NOT self-grade evidence.** The deterministic evidence grade engine (DATA-OPERATIONS-ARCHITECTURE.md §6.2) assigns grades mechanically from four binary criteria. Agent self-assigned grades are invalid and must be recomputed by the engine.
 
-**Self-audit limitation:** The same agent executing the pipeline should NOT be the sole quality auditor of its own output. Every 5th niche (Mechanism 4, §6.3) must be audited by a FRESH agent with no shared context. Calibration protocol (§6.3, Mechanism 6) requires DUAL independent evaluation of the calibration niche before any niche evaluations begin.
+**Self-audit limitation (BINDING):** The same agent executing the pipeline MUST NOT be the sole quality auditor of its own output. Every 5th niche (Mechanism 4, §6.3) must be audited by a FRESH agent with no shared context. Calibration protocol (§6.3, Mechanism 6) requires DUAL independent evaluation of the calibration niche before any niche evaluations begin.
 
 ---
 
@@ -3961,14 +4001,65 @@ Based on: workflow spec achievability, integration complexity, automation potent
 - 3-4: Some workflows require new capability, complex integration, significant human-in-loop
 - 1-2: Core workflows unbuildable with current technology, requires new platform development
 
-#### Composite Score
-**Niche Priority Score = Structural Attractiveness × 0.3 + Warm Access × 0.25 + Commercial Viability × 0.35 + Build Feasibility × 0.1**
+#### Score 5: Founder-Market Fit (1-10)
+Based on: Bob's network relevance, Adriaan's data ops fit, Wesley's build capability, founder energy/enthusiasm for this niche, credibility with this buyer persona
+- 8-10: Bob knows 10+ potential buyers personally in this niche, founders are actively excited, ClarityRev team is credible to this buyer persona
+- 5-7: Bob knows 3-9 buyers in this niche, founders are interested, somewhat credible to buyers
+- 3-4: Bob knows 0-2 buyers in this niche, founders are neutral, credibility would be a stretch
+- 1-2: No network, no energy, no credibility — why are we evaluating this niche?
 
-Weighting rationale (validated 2026-07-23): Commercial viability is heaviest (it's about revenue). Warm access gets 0.25 because direct-first GTM depends on founder network reach — a commercially perfect niche that Bob cannot access is worthless. Build feasibility is lightest because ClarityRev can build if the opportunity is strong; build difficulty should not veto a good market. Structural attractiveness (0.3) balances market pull against founder access.
+**Weight proposal:** 0.15 (provisional — deferred to sensitivity analysis). This weight reduces CV from 0.35 → 0.30 and BF from 0.10 → 0.05. A 7.2 composite niche with perfect founder fit beats an 8.5 niche the founders hate. Final weight determined by sensitivity analysis (A-P3-1) — test ±0.05 around the proposal and measure ranking impact.
 
-**Weight validation:** These weights produce sensible rankings for the expected niche distribution (2-3 LAUNCH_PENDING, 8-12 DEEP, remainder STANDARD). The calibration niche will provide the first empirical test — if the composite score disagrees with founder intuition on ≥3 of the first 10 niches, weights should be re-examined. Weights may be adjusted post-calibration; any adjustment must be pre-registered in `_program/LEDGER.yaml` before being applied to scored niches.
+#### Composite Score (Rank-Based Aggregation)
 
-**Normalization caveat:** Raw scores from different agents are normalized through the calibration protocol (§6.3, Mechanism 6). Composite scores reported in cross-niche comparisons use NORMALIZED scores, not raw scores. Both are recorded in the canvas frontmatter.
+**Important: Weighted linear combination (SA×0.3 + WA×0.25 + CV×0.35 + BF×0.1) is mathematically invalid for ordinal 1-10 scores.** The distance between ordinal anchors is not equal (the gap between 2 and 3 differs from 7 and 8). Ranking differences of 0.2-0.5 are noise. Use rank-based aggregation instead:
+
+1. After **all 25 niches** have been scored on all 5 dimensions (SA, WA, CV, BF, FM), rank them on each dimension (rank 1 = best score).
+2. Compute the **Weighted Rank Score (WRS)**:
+
+```
+WRS = Rank_SA × 0.30 + Rank_WA × 0.25 + Rank_CV × 0.30 + Rank_BF × 0.05 + Rank_FM × 0.15
+```
+
+3. **Lower WRS = better.** The niche with the lowest WRS is the top-ranked.
+
+Weighting rationale (validated 2026-07-22, amended 2026-07-23 for Score 5): Commercial viability is heaviest (it's about revenue), but reduced from 0.35 to 0.30 to accommodate founder-market fit. Warm access (0.25) stays constant because direct-first GTM depends on founder network reach — a commercially perfect niche that Bob cannot access is worthless. Founder-market fit (0.15, provisional) captures the human reality: a niche the founders are excited about and credible in will outperform a numerically "better" niche they have no energy for. Build feasibility (0.05) is lightest because ClarityRev can build if the opportunity is strong; build difficulty MUST NOT veto a good market. Structural attractiveness (0.3) balances market pull against founder access and fit.
+
+**Weight validation:** These weights produce sensible rankings for the expected niche distribution (2-3 LAUNCH_PENDING, 8-12 DEEP, remainder STANDARD). The calibration niche will provide the first empirical test — if the composite score disagrees with founder intuition on ≥3 of the first 10 niches, weights MUST be re-examined. Weights may be adjusted post-calibration, but only if the pre-registration rule is followed: any adjustment must be pre-registered in `_program/LEDGER.yaml` before being applied to scored niches.
+
+**Normalization caveat:** Raw scores from different agents are normalized through the calibration protocol (§6.3, Mechanism 6). Rank-based aggregation inherently normalizes across agents since ranks are relative, not absolute. The individual 1-10 scores remain recorded in the canvas frontmatter for traceability, but cross-niche comparisons at the portfolio level use WRS ranks.
+
+**Backward compatibility:** The `composite_score` field in the canvas frontmatter is retained for historical recording of the raw weighted linear combination, but portfolio-level prioritization uses WRS ranks exclusively.
+
+#### Ranking Uncertainty (Bootstrap Confidence Intervals)
+
+The WRS rank is a point estimate subject to scoring noise. After all 25 niches are ranked:
+
+1. Run **1,000 bootstrap iterations** by resampling the 4-dimensional score vectors (SA, WA, CV, BF) with replacement.
+2. In each iteration, recompute the WRS and rank for every niche.
+3. From the empirical distribution of ranks across 1,000 iterations, compute the **90% confidence interval** (5th and 95th percentiles) for each niche's rank.
+
+**Interpretation:**
+- If two niches have overlapping 90% CIs, they are **STATISTICALLY TIED** — do not treat one as meaningfully higher-ranked than the other.
+- Only niches with non-overlapping CIs can be considered statistically distinguishable.
+- Report the CI width: wider CIs indicate higher uncertainty (fewer data points, wider score disagreements).
+
+**Reporting format (in `_program/LEDGER.yaml`):**
+
+```yaml
+ranking_uncertainty:
+  bootstrap_iterations: 1000
+  confidence_level: 90
+  niches:
+    N-001:
+      rank: 3
+      ci_5: 2
+      ci_95: 6
+      statistically_tied_with: [N-004, N-007]
+    # ... all niches
+```
+
+The calibration protocol (§6.3, Mechanism 6) must verify that bootstrap CIs are sensible for the calibration niche before the pipeline is applied to remaining niches.
 
 ### 6.2 Common Data Format
 
@@ -3994,6 +4085,7 @@ scores:
   warm_access: 0
   commercial_viability: 0
   build_feasibility: 0
+  founder_market_fit: 0
 
 # Evidence quality
 evidence_quality: 0.0                         # Percentage of claims at [E] or higher
@@ -4034,64 +4126,88 @@ As agents work through 25 niches, methodology quality can degrade. Prevent drift
 **Mechanism 1: Template Locking**
 Every canvas MUST start by copying the template from Appendix A. No field can be removed, renamed, or reordered. If a field genuinely doesn't apply to a niche, write "N/A — [reason]" rather than skipping it.
 
-**Mechanism 2: Evidence Grade Audit**
-Before submission, the agent must count `[P]`, `[E]`, `[H]`, `[S]` claims. If >50% are `[H]` or `[S]`, the canvas must be flagged as HIGH-UNCERTAINTY and scored at half weight in comparisons.
+**Mechanism 2: Evidence Confidence Flag (CORRECTED — replaces prior half-weight penalty)**
+
+Before submission, the agent must count `[P]`, `[E]`, `[H]`, `[S]` claims. Instead of penalizing niches with sparse data, every canvas reports an EVIDENCE CONFIDENCE FLAG alongside its composite score. The flag does NOT affect ranking.
+
+- **HIGH CONFIDENCE:** ≥66% `[P]`+`[E]` claims
+- **MODERATE CONFIDENCE:** 33-66% `[P]`+`[E]` claims
+- **LOW CONFIDENCE:** <33% `[P]`+`[E]` claims
+
+The evidence confidence flag is REPORTED ALONGSIDE the composite score. Founders see:
+  'Niche #3 ranks 1st (composite) with MODERATE confidence — the data is thinner than Niche #7 which ranks 2nd with HIGH confidence.'
+
+**Decision rule:** If two niches are within the ranking uncertainty band (bootstrap confidence interval), the niche with HIGHER evidence confidence is recommended. If a niche ranks #1 with LOW confidence, the founders are explicitly warned: "This is the highest-scoring niche but the evidence for this score is thin. Validate with primary research before committing."
 
 **Mechanism 3: Contradiction Check**
 Cross-reference dependent sections:
-- Section 3 pain must match Section 6 triggers (if the pain is churn, triggers should include churn events)
+- Section 3 pain must match Section 6 triggers (if the pain is churn, triggers MUST include churn events)
 - Section 8 free snapshot must logically lead to Section 9 paid entry
 - Section 7 lifecycle must match Sections 8-10 offers
 - Section 14 RIOS scores must be consistent with Section 3-5 assessments
 
 **Mechanism 4: Sample-Based Quality Control**
-Every 5th canvas (5, 10, 15, 20, 25) should be audited by a fresh agent using the adversarial checklist in Part 3. This catches drift that the original agent may not notice.
+Every 5th canvas (5, 10, 15, 20, 25) MUST be audited by a fresh agent using the adversarial checklist in Part 3. This catches drift that the original agent may not notice.
 
 **Mechanism 5: The "McKinsey Partner" Test**
-Before finalizing, the agent should ask: "Would I feel comfortable presenting this canvas to a McKinsey partner who knows this niche?" If the answer is no, identify the weakest section and strengthen it.
+Before finalizing, the agent MUST ask: "Would I feel comfortable presenting this canvas to a McKinsey partner who knows this niche?" If the answer is no, identify the weakest section and strengthen it.
 
 **Mechanism 6: Calibration Protocol (MANDATORY — BINDING)**
 
 **Purpose:** 25 independent agents following the same methodology WILL produce incomparable outputs without calibration. Agent A's "Score 4" is not Agent B's "Score 4." This protocol establishes inter-rater reliability before any niche evaluations begin.
 
-**Step 1 — Select Calibration Niche:**
-A common "calibration niche" is selected before any niche evaluations begin. Requirements: well-understood, moderate complexity, accessible data, not one of the 25 evaluation niches. Recommended: "Mid-Market IT Staffing Agencies on Bullhorn" (uses existing Gapstars research, accessible CRM, well-understood buyer).
+**Design principle:** A single calibration niche with two agents produces ONE data point. Two agents agreeing on a single data-rich niche does not guarantee agreement on data-sparse niches, blue-ocean niches, or niches with different evidence profiles. This protocol uses TWO calibration niches to detect systematic bias.
 
-**Step 2 — Dual Independent Evaluation:**
-Two independent agents each produce a complete 15-section canvas for the calibration niche. Agents work simultaneously, with no communication, using the same methodology version. Both canvases are submitted to the methodology owner for comparison.
+**Step 1 — Select Two Calibration Niches:**
+Two calibration niches are selected before any evaluation begins. Each covers a different evidence-density profile:
 
-**Step 3 — Inter-Rater Reliability Check:**
-Compare the two calibration canvases on these dimensions:
+| Niche | Profile | Description | Purpose |
+|---|---|---|---|
+| **CAL-A** | Data-rich, well-understood | "Mid-Market IT Staffing Agencies on Bullhorn" | Tests agent agreement on a niche with abundant competitors, reviews, and public data. Uses existing Gapstars research. |
+| **CAL-B** | Data-sparse, blue-ocean | TBD — a niche with minimal public data, few competitors, thin review corpus | Tests agent agreement on a niche where agents must work with limited evidence. No single calibration niche can validate both profiles. |
 
-| Dimension | Maximum Acceptable Delta | Action If Exceeded |
+**Step 2 — Establish Ground-Truth Reference (CAL-A only):**
+Before agents evaluate CAL-A, Wesley manually produces a "reference canvas" for 5 sections: §1 (Niche Identity), §2 (Buyer Persona), §4 (Competitive Landscape), §10 (Pricing & Packaging), §14 (RIOS Scoring & Verdict). This ground truth is the authoritative standard against which agent accuracy is measured. Agents must agree with the ground truth (not just with each other).
+
+Ground-truth sections are flagged `[GROUND_TRUTH]` in the canvas copy provided to agents. Agents evaluate CAL-A knowing a ground truth exists, but without knowing which sections are ground-truthed.
+
+**Step 3 — Dual Independent Evaluation (Both Niches):**
+Two independent agents produce a complete 15-section canvas for CAL-A. Two independent agents (different from the CAL-A agents, to avoid learned-bias sharing) produce a complete 15-section canvas for CAL-B. All 4 agents work simultaneously, with no communication, using the same methodology version.
+
+**Step 4 — Inter-Rater Reliability Check:**
+Compare calibration canvases on quantitative metrics:
+
+| Metric | Target | Action If Failed |
 |---|---|---|
-| RIOS composite score | ±0.5 points | Methodology ambiguity in scoring — clarify scoring anchors in §14 Part B |
-| Niche verdict | Must match exactly | Verdict criteria ambiguous — tighten §14 Part D definitions |
-| Evidence grade distribution (% `[P]`/`[E]`/`[H]`/`[S]`) | ±10 percentage points per grade | Grading standards inconsistent — add more `[P]`/`[E]`/`[H]`/`[S]` examples to Appendix B |
-| Number of open questions (§15) | ±3 questions | Research depth expectations inconsistent — add per-section research depth examples |
-| §14 Part B dimension scores (per dimension) | ±1.0 points | Score calibration needed — agents review each other's justifications, reconcile |
-| Pain quantification (§3.2 EUR/year) | Within same order of magnitude | Market sizing methodology inconsistent — strengthen §3.3 formula requirements |
+| **Cohen's Kappa** on evidence grades (CAL-A) | κ ≥ 0.61 (substantial agreement) | Evidence grading criteria too ambiguous — add more [P]/[E]/[H]/[S] examples to Appendix B, then re-calibrate |
+| **Cohen's Kappa** on evidence grades (CAL-B) | κ ≥ 0.61 | If CAL-A passes but CAL-B fails: grading criteria are biased toward data-rich contexts — add data-sparse grading guidance to Appendix B |
+| **Intraclass Correlation Coefficient (ICC)** on RIOS scores (CAL-A; agreement with ground truth) | ICC ≥ 0.75 | Agent scoring anchors misunderstood — clarify §14 Part B with dimension-level examples |
+| **Intraclass Correlation Coefficient (ICC)** on RIOS scores (CAL-B; agent-to-agent) | ICC ≥ 0.75 | If CAL-A passes but CAL-B fails: systematic bias toward penalizing data-poor niches — review Mechanism 2 (Evidence Confidence Flag) for residual data-penalty |
+| **Evidence grade distribution** (% `[P]`/`[E]`/`[H]`/`[S]`) — across both niches | Difference ≤ 10 pp per grade between agents | Grading standards inconsistent — add per-grade anchor examples |
+| **Ground-truth section accuracy** (CAL-A, 5 sections) | ≥80% claim-level agreement | Agent interpretation of methodology diverges from ground truth — amend specific sections where disagreement occurs |
+| **Niche verdict** (both niches) | Must match exactly between paired agents | Verdict criteria ambiguous — tighten §14 Part D definitions |
+| **Pain quantification** (§3.2 EUR/year, both niches) | Within same order of magnitude | Market sizing methodology inconsistent — strengthen §3.3 formula requirements |
 
-**Step 4 — Calibration Resolution:**
-If any dimension exceeds the maximum acceptable delta:
-1. Both agents review each other's canvases (blind to scores).
+**Step 5 — Calibration Resolution:**
+If any metric fails:
+1. All 4 agents review each other's canvases (blind to scores).
 2. Agents identify the specific methodology sections where interpretation diverged.
-3. Methodology is amended to clarify ambiguous sections.
-4. Re-run calibration evaluation with amended methodology.
-5. Repeat until all deltas are within acceptable range.
+3. Methodology is amended to clarify ambiguous sections. If CAL-A passed but CAL-B failed, the amendments specifically target data-sparse evaluation guidance.
+4. Re-run calibration evaluation with amended methodology on BOTH niches.
+5. Repeat until all metrics pass.
 
-**Step 5 — Score Normalization:**
+**Step 6 — Score Normalization:**
 Once calibration passes, each agent's calibration scores establish their "grading tendency." Subsequent niche scores are normalized:
-- If Agent A scored calibration niche RIOS at 3.2 and Agent B scored it at 3.8, Agent A grades ~0.6 points stricter than Agent B.
-- Agent A's subsequent niche scores are adjusted upward by 0.3, Agent B's downward by 0.3, to center both on the calibration mean.
-- Normalization is applied transparently; raw scores and adjusted scores are both recorded in the canvas YAML frontmatter.
+- If Agent A scored CAL-A RIOS at 3.2 and Agent B scored CAL-A at 3.8, Agent A grades ~0.6 points stricter than Agent B on CAL-A.
+- Normalization factors are computed per-agent based on CAL-A + CAL-B combined. If an agent shows different tendencies on data-rich vs. data-sparse niches, separate normalization curves are applied.
+- Agent A's subsequent niche scores are adjusted by the agent's calibration offset; raw scores and adjusted scores are both recorded in the canvas YAML frontmatter.
 
-**Step 6 — Ongoing Calibration:**
-- Every 5th canvas includes a mini-calibration: the agent re-scores the calibration niche (abbreviated — §14 Part B only) to detect drift.
-- If an agent's calibration re-score drifts by >0.5 from their original, their recent canvases are flagged for review.
+**Step 7 — Ongoing Calibration:**
+- Every 5th canvas includes a mini-calibration: the agent re-scores BOTH calibration niches (abbreviated — §14 Part B only) to detect drift.
+- If an agent's calibration re-score drifts by >0.5 from their original on EITHER CAL-A or CAL-B, their recent canvases are flagged for review.
 - After all 25 niches are complete, one randomly selected niche is re-evaluated by a different agent as a final inter-rater reliability check.
 
-**Calibration completion gate:** No niche evaluation begins until the calibration protocol is completed and all deltas are within acceptable range. This gate is BINDING. `[DESIGN]`.
+**Calibration completion gate:** No niche evaluation begins until the calibration protocol is completed and ALL metrics pass for BOTH calibration niches. This gate is BINDING. `[DESIGN]`.
 
 **Mechanism 7: Independent Verification Sampling (MANDATORY — BINDING)**
 
@@ -4122,6 +4238,128 @@ Once calibration passes, each agent's calibration scores establish their "gradin
 
 ---
 
+## 7. PART 6: PORTFOLIO ANALYSIS FRAMEWORK
+
+**Status:** Applied after all 25 niches have been individually evaluated and scored (Part 5).
+
+**Purpose:** Niches are NOT independent decisions. The top-3 individually-ranked niches might share the same CRM dependency, rely on the same buyer persona, or compete for the same founder hours. This section adds portfolio-level analysis to ensure the recommended niche set is diversified, resilient, and sequenced correctly.
+
+**When to run:** After all 25 niches have composite scores AND bootstrap confidence intervals (Part 5). Portfolio analysis does NOT change individual niche scores — it changes how they are interpreted as a group.
+
+---
+
+### 7.1 Correlation Matrix (Top-10 Niche Pairs)
+
+For each pair of top-10 niches, score overlap on five dimensions. High overlap = high correlation = poor diversification.
+
+| Overlap Dimension | Scoring | Why It Matters |
+|---|---|---|
+| **CRM system dependency** | 1 (different CRM) → 5 (same CRM) | A single CRM API deprecation kills both niches |
+| **Buyer persona** | 1 (completely different buyer) → 5 (identical buyer) | Same buyer = same channels, same messages; lower reach |
+| **Signal types** | 1 (no overlapping signals) → 5 (all signals overlap) | Signal detection infrastructure is reusable, but correlated signal failure is dangerous |
+| **Competitor set** | 1 (no competitor overlap) → 5 (identical competitors) | Competitors can block both niches with one response |
+| **Regulatory environment** | 1 (different regulations) → 5 (same regulations) | Regulatory change affects both niches simultaneously |
+
+**Correlation score for each pair:** Average of 5 overlap dimensions (1-5). Report as a 10×10 matrix.
+
+**Output:** Identify which niche pairs have correlation ≥ 4.0. These are HIGH-CORRELATION PAIRS — entering both creates concentrated risk.
+
+---
+
+### 7.2 Concentration Score
+
+After the correlation matrix, compute the concentration risk of the recommended portfolio.
+
+| Metric | Calculation | Threshold | Action |
+|---|---|---|---|
+| CRM Concentration | % of top-3 niches sharing the same CRM dependency | >66% | Flag as HIGH-CRM-CONCENTRATION. Identify fallback CRM for each niche. |
+| Buyer Concentration | % of top-3 niches targeting the same buyer persona | >66% | Flag as HIGH-BUYER-CONCENTRATION. Recommend at least 2 distinct buyer personas in top-3. |
+| Signal Concentration | % of top-3 niches relying on the same signal type | >66% | Flag as HIGH-SIGNAL-CONCENTRATION. Diversify signal infrastructure across niches. |
+| Founder Concentration | % of top-3 niches requiring the same founder skillset | >66% | Flag as HIGH-FOUNDER-CONCENTRATION. Ensure Bob/Adriaan can serve all 3 simultaneously. |
+
+**Overall Portfolio Concentration Score:** % of top-3 niches sharing ≥3 of the above dependencies. If >50%, the portfolio is DANGEROUSLY CONCENTRATED — recommend dropping at least one niche for a more diversified alternative.
+
+---
+
+### 7.3 Adjacency Value
+
+For each top-10 niche, assess what becomes EASIER after establishing a foothold. This captures the optionality value that individual niche scoring misses.
+
+**Adjacency dimensions:**
+
+| Dimension | What Becomes Easier | Scoring Rubric |
+|---|---|---|
+| Shared competitor intelligence | Competitor profiles from Niche A populate SHARED/ registry; Niche B reuses them | +1 per competitor shared between niches |
+| Shared buyer language | Verbatim quotes and pain architecture from Niche A apply to Niche B's buyer | +1 per shared pain pattern |
+| Shared signal infrastructure | Signal detection pipelines built for Niche A can be retuned for Niche B | +1 per signal type shared |
+| Shared brand authority | Success in Niche A creates credibility for entering Niche B (same buyer type) | +2 if same buyer persona; +1 if adjacent persona |
+| Shared delivery workflows | Workflows built for Niche A can be adapted (not rebuilt) for Niche B | +1 per workflow shared |
+
+**Adjacency Score per pair:** Sum of shared adjacency dimensions (0-6). Report as a 10×10 adjacency matrix alongside the correlation matrix.
+
+**Adjacency Value of each niche:** Sum of adjacency scores with all other top-10 niches. A niche that is highly adjacent to many others has high portfolio value — even if its individual score is #5, it may be worth entering early because it unlocks #2 and #3.
+
+---
+
+### 7.4 Sequencing Recommendation
+
+Given the portfolio analysis (correlation, concentration, adjacency), produce a recommended entry sequence.
+
+**Phase 1 — Beachhead (Month 1-4):**
+- Select the niche with the HIGHEST individual composite score AND LOWEST correlation with all other candidates
+- This niche must: establish brand credibility, build reusable signal infrastructure, populate SHARED/ registry with competitor intelligence
+- Criteria: composite score top-3 AND no high-correlation pairs in top-10 AND adjacency score ≥3 with at least 2 other top-10 niches
+- If no niche meets all criteria, optimize for: composite score first, then adjacency, then correlation
+
+**Phase 2 — Adjacent Expansion (Month 5-10):**
+- Select the niche that benefits MOST from Beachhead's adjacency value
+- Criteria: adjacency score with Beachhead ≥3, buyer persona overlap (shared language), signal infrastructure reusable
+
+**Phase 3 — Diversification (Month 11-18):**
+- Select a niche with LOW correlation to both Phase 1 and Phase 2 niches
+- This reduces portfolio concentration risk
+- Criteria: correlation ≤2 with both existing niches, strong individual composite score
+
+**Phase 4 — Aspirational (Month 19-24+):**
+- The remaining highest-scoring niche that requires brand authority from Phases 1-3 to succeed
+- This niche may have a lower individual score but benefits from the established portfolio
+
+**Sequencing decision rule:** If two niches are statistically tied (overlapping bootstrap CIs), prefer the one with higher adjacency value for earlier entry. If adjacency values are also tied, prefer the one with lower correlation to existing portfolio niches.
+
+---
+
+### 7.5 Portfolio Dashboard (Post-Analysis Output)
+
+After portfolio analysis, produce a single-page dashboard:
+
+```
+PORTFOLIO DASHBOARD — [Date]
+========================================
+Recommended Top-3 Niches:
+  1. [Niche A] — Score: [X] (HIGH confidence) — Beachhead
+  2. [Niche B] — Score: [Y] (MODERATE confidence) — Adjacent (M5-10)
+  3. [Niche C] — Score: [Z] (LOW confidence) — Diversifier (M11-18)
+
+Portfolio Stats:
+  Correlation Matrix: [Link to 10×10 matrix]
+  Concentration Score: [N]% — [PASS/FLAG]
+  Adjacency Value: Beachhead unlocks [N] of top-10 niches
+
+Risk Warnings:
+  [Warning 1, e.g., "Niches A and B share CRM dependency"]
+  [Warning 2, e.g., "Niche C has LOW evidence confidence — validate before Phase 3"]
+
+Sequencing:
+  Month 1-4:   [Niche A]
+  Month 5-10:  [Niche B]
+  Month 11-18: [Niche C]
+  Fallback:    [Niche D] if [Niche C's validation fails within 6 months]
+```
+
+**Integration with execution:** The portfolio dashboard feeds directly into the Day 1 After Selection execution plan (F-P3-2). The Beachhead niche determines the first build priorities, the first outreach targets, and the first signal detection infrastructure.
+
+---
+
 ## APPENDIX A: CANVAS TEMPLATE (copiable)
 
 ```markdown
@@ -4136,6 +4374,7 @@ scores:
   warm_access: 0
   commercial_viability: 0
   build_feasibility: 0
+  founder_market_fit: 0
 evidence_quality: 0.0
 key_metrics:
   market_size_companies: 0
@@ -4187,7 +4426,7 @@ open_questions: 0
 
 ## Section 8: Free Entry Services (Attract + Diagnose)
 - §8 preamble: Free layer strategic job statement (attract volume / pre-qualify / educate / demonstrate superiority)
-- §8.1: Competitor Free Layer Audit (≥3 competitors, source-verified, Match/Differentiate/Skip with strategic intent)
+- §8.1: Competitor Free Layer Audit (≥3 competitors target; if fewer exist document all found; source-verified, Match/Differentiate/Skip with strategic intent)
 - §8.1a: Competitive Free-Layer Strategy Canvas
 - §8.2: Free Service Design (≥3 services across ≥2 tiers; ~25 fields per service incl. Bob's Usage, objection handling, MEDDIC mapping, conversion model, build spec)
 - §8.3: Free Layer Distribution (per service: channel, SEO, aggregator-native, cost, experiment design)
@@ -4197,7 +4436,7 @@ open_questions: 0
 
 ## Section 9: Paid Entry Services (Prove)
 - §9 preamble: Paid portfolio architecture statement (ladder/menu/sequence)
-- §9.1: Competitor Paid Service Audit (≥3 competitors, source-verified, Match/Differentiate/Skip with strategic intent)
+- §9.1: Competitor Paid Service Audit (≥3 competitors target; if fewer exist document all found; source-verified, Match/Differentiate/Skip with strategic intent)
 - §9.1a: Competitive Paid-Layer Strategy Canvas
 - §9.2: Paid Service Portfolio (≥3 services w/ portfolio economics; ~30 fields per service incl. Bob's Usage, objection handling, MEDDIC, conversion model, build spec, guarantee exposure)
 - §9.3: Service Type Patterns (8 types + Other, with margin profile + founder time per delivery)
@@ -4207,7 +4446,7 @@ open_questions: 0
 
 ## Section 10: Core Recurring Services (Commit + Expand)
 - §10 preamble: Recurring portfolio strategy (single core / core+modules / platform)
-- §10.1: Competitor Recurring Audit (≥3 competitors, source-verified, Match/Differentiate/Skip with strategic intent)
+- §10.1: Competitor Recurring Audit (≥3 competitors target; if fewer exist document all found; source-verified, Match/Differentiate/Skip with strategic intent)
 - §10.1a: Competitive Recurring Strategy Canvas
 - §10.2: Core Recurring Service Design (~30 fields incl. LTV, conversion model, Bob's Usage, objection handling, onboarding, churn prevention)
 - §10.3: Expansion Architecture (≥2 paths, specific triggers from §6B.4, conversion math, pricing)
@@ -4334,7 +4573,7 @@ open_questions: 0
 | 7 | No conversion math | Journey is a story, not a model | §7.3 conversion rates (low-expected-high) per transition with compound probability calculation. At zero clients, flag `[S]`. |
 | 7 | Linear-only journey design | Buyers stall/loop/skip with no designed response | §7.3.2 non-linear paths: nurture loop, skip path, resurrection path, churn path, non-converter path — minimum 5 |
 | 7 | Unsurfaced hinge assumption | Entire journey built on untested "Snapshot creates urgency" premise | §7.2 hinge assumption with 3-output-level stress test + confidence grade. If LOW confidence, flag niche in §14. |
-| 7 | No founder capacity integration | Journey assumes infinite Bob | §7.4 founder capacity allocation per stage with ceilings + overflow procedures. Bob = 40 hrs/week (binding). |
+| 7 | No founder capacity integration | Journey assumes infinite Bob | §7.4 founder capacity allocation per stage with ceilings + overflow procedures. Bob = 20 hrs/week (binding). |
 | 7 | No data flow between stages | Wesley can't build stage transitions | §7.6.1 stage transition data contracts: data passed, format, mechanism, error handling per transition |
 | 7 | No journey instrumentation | Can't track where buyers are | §7.6.2 CRM fields, entry/exit triggers, stall alerts, notification routing per stage |
 | 7 | No kill metrics | Journey runs indefinitely without evaluation | §7.5.3 per-transition kill metrics with thresholds and escalation actions |

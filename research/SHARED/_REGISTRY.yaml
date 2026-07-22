@@ -1,0 +1,22 @@
+# SHARED/_REGISTRY.yaml — Master index of all cross-niche shared data
+# Read by every niche agent BEFORE fetching any data (§7.2 Discovery Protocol)
+# Updated by every niche agent AFTER completing evaluation
+#
+# Bootstrap protocol (first 5 niches): registry will be sparse.
+# Bootstrap fetches count against the initiating niche's budget.
+# After niche 5, >=60% of common cross-niche data should exist here.
+
+last_updated: "2026-07-23"
+entries:
+  competitors: {}
+    # Example entry:
+    # syncgtm:
+    #   profile_file: "SHARED/competitors/syncgtm-v1.yaml"
+    #   first_profiled_by: "N-003"
+    #   fetch_date: "2026-07-23"
+    #   fresh_until: "2026-10-21"
+    #   niches_relevant: ["N-003", "N-007"]
+  benchmarks: {}
+  triggers: {}
+  regulatory: {}
+  buyer_language: {}

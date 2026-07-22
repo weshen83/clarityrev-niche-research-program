@@ -1,0 +1,12 @@
+# dedup-manifest.yaml — Tracks which niche first profiled each cross-niche entity
+# Prevents duplicate credit spend on the same competitor across niches (§7.3)
+#
+# Before writing to this file, acquire a file-level advisory lock
+# via FileLock (see _pipelines/lib/file_lock.py).
+#
+# Example:
+#   syncgtm:
+#     first_profiled_by: "N-003"
+#     profile_file: "SHARED/competitors/syncgtm-v1.yaml"
+
+entries: {}

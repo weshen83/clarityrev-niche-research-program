@@ -1,0 +1,285 @@
+# Buyer-Language Schema
+# Source: PROGRAM-FIX-SPECIFICATION.md, Workstream F, F-P2-1
+# Validates: buyer language extracts in `04-voice-of-customer/`
+# Status: BINDING — every buyer-language quote ingested must conform
+
+schema:
+  name: "Buyer-Language Schema"
+  version: "1.0"
+  source: "PROGRAM-FIX-SPECIFICATION.md §F-P2-1, NICHE-METHODOLOGY.md §3"
+  file_pattern: "niche-program/research/{NICHE_ID}/04-voice-of-customer/*.yaml"
+
+fields:
+  - field: query_id
+    type: string
+    required: true
+    pattern: "^BL-[A-Z]{3}-\\d{4}$"
+    description: "Unique identifier for each buyer-language extract (e.g., BL-STAFFING-0001 for the staffing niche)"
+
+  - field: niche_id
+    type: string
+    required: true
+    pattern: "^(N-\\d{3}|CAL-[AB])$"
+    description: "Niche identifier this buyer-language extract belongs to"
+
+  - field: verbatim_quote
+    type: string
+    required: true
+    min_length: 10
+    max_length: 5000
+    description: "Exact text from review, Reddit, interview, or other buyer source — NO paraphrasing, NO editing for clarity, NO grammar correction. If the original contains typos, preserve them. If truncated, mark with [...]."
+
+  - field: source_url
+    type: string
+    required: true
+    format: "uri"
+    description: "Full URL where this quote was found. Must resolve to the exact page containing the verbatim quote."
+
+  - field: source_type
+    type: string
+    required: true
+    enum:
+      - G2_REVIEW
+      - CAPTERRA_REVIEW
+      - TRUSTPILOT_REVIEW
+      - REDDIT_POST
+      - REDDIT_COMMENT
+      - LINKEDIN_POST
+      - LINKEDIN_COMMENT
+      - GLASSDOOR_REVIEW
+      - INTERVIEW_TRANSCRIPT
+      - DISCOVERY_CALL
+      - FORUM_POST
+      - SUPPORT_TICKET
+      - CASE_STUDY
+      - SURVEY_RESPONSE
+      - PODCAST_TRANSCRIPT
+      - ANALYST_REPORT
+      - MANUAL_CURATION
+    description: "The type of source where this quote was found. Influences trust weight and copy-use permission."
+
+  - field: reviewer_role
+    type: string
+    required: false
+    min_length: 3
+    description: "Job title of the person who wrote this quote (e.g., 'VP Sales', 'CRO', 'Head of Revenue Operations', 'Director of Sales Operations'). If anonymous, write 'ANONYMOUS'. If role is inferable from context but not stated, prefix with 'INFERRED:'."
+
+  - field: reviewer_company_size
+    type: string
+    required: false
+    enum:
+      - "1-10"
+      - "11-50"
+      - "51-200"
+      - "201-1000"
+      - "1000+"
+      - UNKNOWN
+    description: "Company size band of the reviewer's organization. Leave UNKNOWN if not stated or not inferable."
+
+  - field: reviewer_industry
+    type: string
+    required: false
+    description: "Industry segment of the reviewer's organization (e.g., 'IT Staffing', 'Managed Services', 'SaaS'). Leave blank if unknown."
+
+  - field: pain_classification
+    type: string
+    required: true
+    enum:
+      - EXPRESSED_PAIN
+      - LATENT_PAIN
+      - ASPIRATIONAL_GOAL
+      - COMPLIANCE_REQUIREMENT
+    description: |
+      What type of buyer motivation does this quote represent?
+      - EXPRESSED_PAIN: The buyer explicitly states a problem they are experiencing right now.
+        Example: "We lose 30% of deals because we can't find the right signals in time."
+      - LATENT_PAIN: The buyer describes symptoms without connecting them to a root cause.
+        They know something is wrong but haven't framed it as a solvable problem.
+        Example: "I just feel like we're always behind on our pipeline."
+      - ASPIRATIONAL_GOAL: The buyer describes a desired future state, not a current pain.
+        Example: "I want to be able to predict which accounts will close next quarter."
+      - COMPLIANCE_REQUIREMENT: The buyer needs a solution to meet regulatory, audit, or
+        contractual obligations. Example: "Our auditor requires us to document every deal stage change."
+
+  - field: emotional_charge
+    type: string
+    required: true
+    enum:
+      - FRUSTRATED
+      - ANXIOUS
+      - HOPEFUL
+      - SKEPTICAL
+      - URGENT
+      - RESIGNED
+    description: |
+      The emotional state behind the words — drives copy tone and messaging.
+      - FRUSTRATED: Bottleneck, wasted time, tools don't work. "I've tried six tools and none of them do what they claim."
+      - ANXIOUS: Fear of falling behind, missing targets, getting fired. "If we don't fix this by Q4, I don't know what happens."
+      - HOPEFUL: Looking for a solution, optimistic about possibilities. "Finally someone who understands what we actually need."
+      - SKEPTICAL: Burned by past vendor promises, distrustful. "Every demo looks great. Show me actual results."
+      - URGENT: Time-critical, immediate need. "Our board is asking for these numbers by next week."
+      - RESIGNED: Given up, accepting poor outcomes. "It's just the way sales works here. We've learned to live with it."
+
+  - field: emotional_intensity
+    type: integer
+    required: false
+    minimum: 1
+    maximum: 5
+    description: "Intensity of the emotional charge on a 1-5 scale. 1=subtle, 5=raw/unfiltered. Used for copy prioritization — higher intensity quotes are more powerful in marketing."
+
+  - field: copy_ready
+    type: boolean
+    required: true
+    description: "Can this quote be used directly as website copy (with minimal or no editing)? True = ready for hero section, testimonial, or social proof. False = needs rewriting, paraphrasing, or extracting the core insight."
+
+  - field: copy_ready_reason
+    type: string
+    required: false
+    description: "If copy_ready is false, explain what's missing or what needs rewriting. If copy_ready is true, explain why it works (e.g., 'direct pain statement, buyer's exact words, emotionally charged')."
+
+  - field: headline_candidate
+    type: boolean
+    required: true
+    description: "Is this quote strong enough to be a hero headline or H1 candidate? True = can anchor a landing page. False = useful as body copy or social proof but not headline-level."
+
+  - field: competitor_mentioned
+    type: string
+    required: false
+    description: "Which competitor is the buyer evaluating, comparing against, or complaining about? Leave blank if no competitor is named. If multiple competitors, pipe-separate (e.g., 'ZoomInfo|Lusha')."
+
+  - field: competitor_context
+    type: string
+    required: false
+    enum:
+      - SWITCHING_FROM
+      - EVALUATING_AGAINST
+      - DISSATISFIED_WITH
+      - COMPLIMENTARY
+      - NONE
+    description: "The nature of the competitor relationship in this quote. Critical for 'vs Competitor X' pages."
+
+  - field: trigger_event
+    type: string
+    required: false
+    description: "What event caused the buyer to start looking for a solution? (e.g., 'missed quarterly target', 'new CRM implementation', 'lost key deal', 'board mandate'). Leave blank if not explicitly stated or inferable. Used for trigger-based landing pages and outbound sequence timing."
+
+  - field: trigger_timing
+    type: string
+    required: false
+    enum:
+      - RECENT (<30 days)
+      - RECENT (30-90 days)
+      - ONGOING
+      - RECURRING
+      - UNKNOWN
+    description: "How recent is the trigger event? Critical for outbound urgency scoring."
+
+  - field: revenue_impact_mentioned
+    type: boolean
+    required: false
+    description: "Does the quote mention a specific revenue or cost impact in numbers? True = can be used for quantified ROI messaging."
+
+  - field: revenue_impact_value
+    type: string
+    required: false
+    description: "The specific revenue impact mentioned (e.g., 'losing $500K/year in deals', '30% lower close rates'). Leave blank if no specific number."
+
+  - field: extraction_context
+    type: dict
+    required: false
+    description: "Context about how this quote was extracted."
+    children:
+      - field: extracted_by
+        type: string
+        required: true
+        enum:
+          - AGENT_AUTOMATED
+          - AGENT_MANUAL_CURATION
+          - HUMAN_CURATED
+        description: "How this quote was identified and extracted."
+      - field: extractor_agent_id
+        type: string
+        required: false
+        description: "If extracted by an agent, the agent identifier (e.g., 'claude-opus-4-8')."
+      - field: surrounding_context
+        type: string
+        required: false
+        max_length: 2000
+        description: "2-3 sentences of surrounding context that help interpret the quote. Useful for copywriters to understand the quote's full meaning."
+
+  - field: fetch_date
+    type: string
+    required: true
+    format: "date-iso8601"
+    description: "Date when the source page was fetched or the quote was extracted. ISO 8601 format (YYYY-MM-DD)."
+
+  - field: fresh_until
+    type: string
+    required: false
+    format: "date-iso8601"
+    description: "Date after which this quote should be re-verified for accuracy and timeliness. Default: fetch_date + 180 days. Competitor or pricing references have shorter freshness."
+
+enums:
+  source_type:
+    - G2_REVIEW
+    - CAPTERRA_REVIEW
+    - TRUSTPILOT_REVIEW
+    - REDDIT_POST
+    - REDDIT_COMMENT
+    - LINKEDIN_POST
+    - LINKEDIN_COMMENT
+    - GLASSDOOR_REVIEW
+    - INTERVIEW_TRANSCRIPT
+    - DISCOVERY_CALL
+    - FORUM_POST
+    - SUPPORT_TICKET
+    - CASE_STUDY
+    - SURVEY_RESPONSE
+    - PODCAST_TRANSCRIPT
+    - ANALYST_REPORT
+    - MANUAL_CURATION
+  pain_classification:
+    - EXPRESSED_PAIN
+    - LATENT_PAIN
+    - ASPIRATIONAL_GOAL
+    - COMPLIANCE_REQUIREMENT
+  emotional_charge:
+    - FRUSTRATED
+    - ANXIOUS
+    - HOPEFUL
+    - SKEPTICAL
+    - URGENT
+    - RESIGNED
+  competitor_context:
+    - SWITCHING_FROM
+    - EVALUATING_AGAINST
+    - DISSATISFIED_WITH
+    - COMPLIMENTARY
+    - NONE
+  trigger_timing:
+    - "RECENT (<30 days)"
+    - "RECENT (30-90 days)"
+    - "ONGOING"
+    - "RECURRING"
+    - "UNKNOWN"
+  extraction_type:
+    - AGENT_AUTOMATED
+    - AGENT_MANUAL_CURATION
+    - HUMAN_CURATED
+
+validation:
+  - rule: "If copy_ready is true, copy_ready_reason must be provided"
+    severity: WARNING
+    condition: "copy_ready == true AND copy_ready_reason is empty"
+  - rule: "If competitor_mentioned is populated, competitor_context must also be populated"
+    severity: ERROR
+    condition: "competitor_mentioned is not empty AND competitor_context is empty"
+  - rule: "If revenue_impact_mentioned is true, revenue_impact_value must be provided"
+    severity: WARNING
+    condition: "revenue_impact_mentioned == true AND revenue_impact_value is empty"
+  - rule: "If headline_candidate is true, copy_ready must also be true"
+    severity: ERROR
+    condition: "headline_candidate == true AND copy_ready == false"
+  - rule: "If extraction_context.extracted_by is AGENT_MANUAL_CURATION or AGENT_AUTOMATED, extractor_agent_id must be provided"
+    severity: WARNING
+    condition: "extraction_context is not empty AND extraction_context.extracted_by != HUMAN_CURATED AND extractor_agent_id is empty"

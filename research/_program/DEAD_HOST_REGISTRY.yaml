@@ -1,4 +1,12 @@
-blocked_hosts:
-  - host: "firecrawl.dev"
-    blocked_until: "2026-12-31"
-    reason: "Test block"
+# DEAD_HOST_REGISTRY.yaml — Shared dead-host list for all niche agents
+#
+# MUST NEVER contain entries for primary tool base URLs
+# (firecrawl.dev, api.dataforseo.com). If a primary tool appears dead,
+# escalate to Wesley — do NOT auto-block.
+#
+# Populated only by genuine dead-host detections during pipeline execution.
+# A host is added after 3 consecutive failures with exponential backoff.
+# Re-check every 7 days via a single lightweight HEAD request.
+# If host responds successfully twice consecutively, remove from registry.
+
+blocked_hosts: []

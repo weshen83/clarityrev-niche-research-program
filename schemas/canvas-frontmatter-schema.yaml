@@ -87,7 +87,10 @@ fields:
     validation: "MUST be between 0 and 10 inclusive"
     description: >
       Normalized composite score (post-calibration).
-      Used for cross-niche comparison in LEDGER.yaml.
+      NOTE: Cross-niche comparison now uses rank-based aggregation (WRS)
+      per §6.1. This field retains the historical raw weighted linear
+      combination for backward compatibility. Portfolio-level prioritization
+      in LEDGER.yaml uses WRS ranks exclusively.
       Range: 0.0 - 10.0.
 
   - field: composite_score_raw
@@ -112,6 +115,10 @@ fields:
     description: >
       Four sub-scores covering the RIOS dimensions for cross-niche comparison.
       Each score ranges from 1 to 10.
+      NOTE: Portfolio-level cross-niche comparison uses rank-based aggregation
+      (WRS per §6.1) rather than weighted linear combination of these raw scores.
+      These raw scores are recorded for traceability; ranks are computed at
+      LEDGER.yaml aggregation time across all 25 canvases.
     fields:
       - field: structural_attractiveness
         type: integer

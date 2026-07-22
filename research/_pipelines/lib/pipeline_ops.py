@@ -23,6 +23,12 @@ from typing import Optional, Dict, Any, List, Tuple
 from enum import Enum
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+# ─── File locking ─────────────────────────────────────────────────────────────
+# Advisory file locking for concurrent agent access to shared YAML files.
+# Imported by all 5 operational scripts via pipeline_ops.
+
+from lib.file_lock import FileLock, FileLockError
+
 # ─── Third-party imports ──────────────────────────────────────────────────────
 # ruamel.yaml preserves YAML comments on round-trip (critical per G-014).
 # yaml.safe_dump DESTROYS all comments — never use it for governance YAML files.
