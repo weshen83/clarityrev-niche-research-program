@@ -335,6 +335,17 @@ niche-program/research/
 
 ### 3.2 File Naming Convention
 
+**Directory naming:** `{NICHE_ID}-{slug}/` — combines machine sortability with human readability.
+```
+N-001-b2b-saas-revops/
+N-002-b2b-saas-customer-success/
+N-003-b2b-saas-sales-engagement/
+...
+N-025-salesforce-isv-partners/
+```
+The `N-XXX` prefix ensures deterministic sort order. The slug makes the directory instantly recognizable to founders browsing the filesystem. The slug is assigned when the niche is registered in LEDGER.yaml.
+
+**File naming:**
 ```
 {niche_id}-{data_type}-{descriptor}-v{version}.{extension}
 
@@ -346,7 +357,6 @@ Examples:
   SHARED-competitor-profile-gong-v3.yaml
   SHARED-benchmark-churn-b2b-saas-v1.yaml
   CAL-A-competitor-profile-clari-v1.yaml
-```
 
 **Controlled vocabulary for `{data_type}`:** `company-discovery`, `competitor-profile`, `competitor-pricing`, `market-sizing`, `review-corpus`, `buyer-language`, `signal-feasibility`, `technographic-profile`, `buyer-insight`, `keyword-volume`, `backlink-profile`, `serp-analysis`, `news-monitoring`, `hiring-signals`, `funding-data`, `regulatory-data`, `benchmark`, `trigger-catalog`, `canvas`, `evidence-trace`, `reconciliation`.
 
