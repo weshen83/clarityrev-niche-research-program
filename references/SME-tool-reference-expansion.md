@@ -705,7 +705,7 @@ EU government contract awards — a growth signal for B2B niche companies.
 | Attribute | Detail |
 |-----------|--------|
 | **Official URL** | https://ted.europa.eu |
-| **API v3** | Free, open, no authentication required |
+| **API v3 endpoint** | `https://api.ted.europa.eu/v3/notices/search` (POST, free, no auth) |
 | **TEDective (OSS)** | https://api.tedective.org — OCDS-compliant JSON, docs at /docs and /redoc |
 | **Rate limit** | Not officially documented for TED v3; TEDective is updated monthly |
 | **Pricing** | Completely free |
@@ -724,15 +724,17 @@ EU government contract awards — a growth signal for B2B niche companies.
 **Usage Pattern:**
 
 ```bash
-# TEDective API — search tenders by CPV code
+# Official TED v3 API — POST with expert-search DSL
+curl -X POST "https://api.ted.europa.eu/v3/notices/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query":"publication-date >= 20260701","fields":["publication-number","notice-title","buyer-name"],"limit":10,"scope":"ACTIVE"}'
+
+# TEDective API (third-party, OCDS format) — search by CPV code
 # CPV 48000000 = Software and information systems
 curl "https://api.tedective.org/tenders?cpv=48000000&country=NL&limit=50"
 
 # Search by keyword + country
 curl "https://api.tedective.org/tenders?query=accounting&country=NL&limit=10"
-
-# Get tender details
-curl "https://api.tedective.org/tenders/{tender_id}"
 ```
 
 **CPV Codes for Common B2B Niches:**
@@ -1212,22 +1214,28 @@ Swiss company registry — free, no authentication required.
 | **EHRAID lookup** | Full company profile by internal register ID | Deep company profile |
 | **Legal form list** | All Swiss legal forms (AG, GmbH, etc.) | Understand legal structure landscape |
 
+**Auth:** ⚠️ ZEFIX Public REST API now requires HTTP Basic Auth (username + password). Register for free credentials at https://www.zefix.admin.ch.
+
 **Usage Pattern:**
 
 ```bash
-# Search by name (reverse-engineered — may need canton filter)
-curl "https://www.zefix.ch/ZefixREST/api/v1/company/search?name=DataSnipper&canton=ZH"
+# POST search by name (requires Basic Auth)
+curl -X POST "https://www.zefix.admin.ch/ZefixPublicREST/api/v1/firm/search.json" \
+  -H "Content-Type: application/json" \
+  -u "$ZEFIX_USER:$ZEFIX_PASS" \
+  -d '{"name":"Roche","maxEntries":5,"activeOnly":true}'
 
 # Lookup by UID
-curl "https://www.zefix.ch/ZefixREST/api/v1/company/uid/CHE-123.456.789"
+curl "https://www.zefix.admin.ch/ZefixPublicREST/api/v1/company/uid/CHE-123.456.789" \
+  -u "$ZEFIX_USER:$ZEFIX_PASS"
 ```
 
 **Key Tips:**
-- The REST API v1 is publicly undocumented — it's the same API zefix.ch website uses internally. Endpoints may change without notice
-- **Board members, signatories, and governance details are NOT available** through ZEFIX REST API v1. Need that? Use the ZefixPublicREST API (requires free registration: email zefix@bj.admin.ch for Basic Auth credentials)
-- Searching by canton without a name filter may return API errors
+- ZEFIX now requires authentication (since ~2025). Free credentials available at zefix.admin.ch.
+- POST to `/firm/search.json` with JSON body, not GET with query params
+- **Board members, signatories, and governance details are available** via company UID endpoint
 - UID format: CHE-xxx.xxx.xxx (e.g., CHE-123.456.789)
-- Several open-source MCP servers wrap ZEFIX: `mcp-server-zefix`, `swiss-apis-mcp`, `register-mcp`
+- Several open-source MCP servers wrap ZEFIX: `swiss-apis-mcp`, `register-mcp`
 - For 25-niche research: ZEFIX is essential only if the niche has meaningful Swiss market component; otherwise skip
 
 ---
