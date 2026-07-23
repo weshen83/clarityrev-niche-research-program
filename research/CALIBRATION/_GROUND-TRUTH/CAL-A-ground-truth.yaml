@@ -1,0 +1,508 @@
+# =============================================================================
+# CAL-A GROUND TRUTH CANVAS — Mid-Market IT Staffing Agencies on Bullhorn
+# =============================================================================
+# Author: SME Research Director (AI) + Wesley (review)
+# Version: 1.0
+# Date: 2026-07-23
+# Purpose: Ground truth reference for calibration of niche evaluation agents
+# Methodology: NICHE-METHODOLOGY.md Appendix A (SS1, SS2, SS4, SS10, SS14)
+#
+# EVIDENCE GRADING:
+#   [P] = Proven — multiple independent verifiable sources
+#   [E] = Evidenced — single credible source or multiple partial sources
+#   [H] = Hypothesis — logical inference from analogous markets
+#   [S] = Speculative — best guess, no supporting data
+#
+# Every claim carries an evidence trace to a specific Gapstars file.
+# =============================================================================
+
+niche_id: "CAL-A"
+niche_name: "Mid-Market IT Staffing Agencies on Bullhorn"
+data_richness: "HIGH"
+ground_truth_version: "1.0"
+author: "SME Research Director (AI) + Wesley (review)"
+date: "2026-07-23"
+methodology_version: "NICHE-METHODOLOGY.md v1.0"
+content_hash: "sha256:PENDING"
+
+# =============================================================================
+# GROUND TRUTH COVERAGE NOTE
+# =============================================================================
+# This canvas covers 5 of 15 sections (SS1, SS2, SS4, SS10, SS14) as specified
+# in CALIBRATION-PROTOCOL.md Section 3. The remaining 10 sections are NOT
+# ground-truthed and will be produced independently by calibration agents.
+#
+# LOW CONFIDENCE SECTIONS (flagged for specialist panel review):
+# 1. SS10 (Pricing Model) — Pricing is based on one prospect (Gapstars) at
+#    EUR 2,950/mo. Whether this is the MARKET pricing or a Gapstars-specific
+#    price is unknown. No competitor pricing was confirmed for the exact same
+#    service bundle (Bullhorn-native managed revenue intelligence).
+# 2. SS4 (Competitive Landscape) — The 31 Benelux agencies in accounts.csv are
+#    comprehensive for NL, but the global mid-market IT staffing space includes
+#    many more. The competitor data for revenue intelligence products (Trigify,
+#    LoneScale, SyncGTM) came from Phase 3 of the research program, not from
+#    a targeted IT-staffing-specific scan.
+# =============================================================================
+
+sections:
+
+  # ===========================================================================
+  # SECTION 1: NICHE IDENTITY & STRATEGIC RATIONALE
+  # ===========================================================================
+  ss1_niche_identity:
+    score: 8.5  # HIGH — well-bounded, evidence-rich, data accessible
+    confidence: "HIGH"
+
+    definition: >
+      IT staffing and recruitment agencies serving mid-market B2B technology
+      companies (50-500 employees), using Bullhorn as their primary CRM and
+      ATS. They place developers, engineers, architects, and technical talent
+      in contract, contract-to-hire, and permanent roles. Their buyers are
+      CTOs, VP Engineering, and Heads of Platform at VC-backed tech companies
+      in the Benelux region.
+
+    boundaries:
+      in:
+        - "IT staffing/recruitment agencies, 10-500 employees"
+        - "Use Bullhorn as primary CRM/ATS system"
+        - "Place developers, engineers, technical talent (not finance, legal, admin)"
+        - "Serve B2B technology companies (not government, healthcare, manufacturing)"
+        - "Operating in Benelux (NL/BE) primary, with potential EU expansion"
+        - "Revenue EUR 2M-50M annually"
+        - "Sales team of 2-15 people (typical: 4-5)"
+      out:
+        - "Executive search / retained search firms (N-012) — different business model, different signal types"
+        - "General staffing agencies (admin, finance, legal) — different skill placements"
+        - "RPO (Recruitment Process Outsourcing) firms — embedded model, not agency model"
+        - "Bullhorn users outside staffing (Bullhorn is staffing-native — 98% of users are staffing firms)"
+        - "Companies not using Bullhorn (HubSpot/Salesforce staffing = different CRM ecosystem)"
+        - "Large enterprise staffing (>500 employees, global operations)"
+        - "Freelance platforms (Upwork, Toptal) — different business model"
+
+    adjacent_niches:
+      - "N-009: IT Services & Systems Integrators (Benelux) — SI firms also need pipeline visibility but sell services, not placements"
+      - "N-012: Executive Search / Recruitment — retained search, different pricing (contingency vs. retainer)"
+      - "N-011: Digital Agencies / Marketing Services — agency model overlap but different buyer language"
+      - "N-024: HubSpot Solutions Partners — ecosystem-native play, different CRM"
+
+    scope_exclusions:
+      - "Bullhorn's own customers in non-staffing verticals (Bullhorn has ~10% market in non-staffing CRMs)"
+      - "Staffing agencies using Salesforce or HubSpot as primary CRM"
+      - "Contingent workforce management platforms (VMS/MSP)"
+
+    first_5_prospects:
+      - "Gapstars (Amsterdam, NL) — EUR 16M+ revenue, 4-5 salespeople, Bullhorn-native, confirmed buyer Lisa-Marie"
+      - "Darwin Recruitment (Haarlem, NL) — 150 employees, Bullhorn + SourceWhale, growing European client base"
+      - "iSense (Amsterdam, NL) — 80 employees, Bullhorn + LinkedIn Recruiter, fast-growing niche IT recruiter"
+      - "Between Technology (Eindhoven, NL) — 300 employees, Bullhorn, Brainport specialist high-tech systems/software"
+      - "StarApple (Amsterdam, NL) — 50 employees, Bullhorn + Homerun, data/analytics focused"
+
+    claims:
+      - claim: "Bullhorn is the dominant CRM/ATS in IT staffing. 31 of 31 Benelux IT staffing firms in the research corpus use Bullhorn."
+        grade: "E"
+        evidence: "/home/weshen83/GTM WORK&PROJECTS/ClarityRevs/prospects/gapstars/reference/accounts.csv — 31 Benelux IT staffing agencies listed, every single one with 'Bullhorn' in 'known_tools' column."
+      - claim: "Gapstars is a representative mid-market IT staffing agency at EUR 16M+ revenue with 4-5 salespeople."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md (Gapstars Demo directory) — 'Gapstars is EUR 16M+ revenue. EUR 3K/month is a rounding error.' Also CAPABILITIES_BLUEPRINT.md: 'For an IT staffing firm like Gapstars (EUR 16M+, 4-5 salespeople, Benelux market).'"
+      - claim: "The niche is geographically concentrated in Benelux with highest density in Amsterdam metropolitan area."
+        grade: "E"
+        evidence: "accounts.csv — 31 companies listed; 15 of 31 headquartered in Amsterdam. Others in Rotterdam (3), Eindhoven (4), Utrecht (2), Haarlem (1), Den Bosch (1), Diemen (1), Hoofddorp (1)."
+      - claim: "Mid-market IT staffing agencies spend EUR 1.5K-8K/month on sales tools — the ClarityRev pricing band fits within existing tool budgets."
+        grade: "H"
+        evidence: "Based on Gapstars data point (EUR 3K ceiling per Lisa-Marie) and CLAUDE.md pricing bands (EUR 1.5-3K entry, EUR 3K core, EUR 5K premium, EUR 8K+ enterprise). No third-party tool spend data for this specific niche was found. Upgrade path: DataForSEO Keywords API search for 'staffing agency CRM costs' or G2 IT staffing software pricing scans."
+      - claim: "Data accessibility for Bullhorn is GREEN — REST API documented, OAuth-based, but Leads module access is uncertain."
+        grade: "E"
+        evidence: "PROJECT-STATE.md GAPSTARS sections: 'P-009 (Leads-module) — the demo shows Bullhorn Lead entities, but Gapstars may not have Bullhorn Enterprise with the Leads module.' Also BULLHORN-UI-SPEC.md documents full Bullhorn REST API research design tokens and entity schemas."
+      - claim: "Bullhorn's AI Fair Use Policy may restrict the business model — this is a BLOCKER-level risk."
+        grade: "E"
+        evidence: "PROJECT-STATE.md v5-audit section: 'Bullhorns AI Fair Use Policy verbiedt wat wij verkopen en Gapstars is de partij die in overtreding is.' (Bullhorn's AI Fair Use Policy prohibits what we sell and Gapstars would be the party in violation.) Risk: confirmed BLOCKER in v5 audit."
+      - claim: "Structural attractiveness score: MODERATE (3.0/5) — fragmented buyer side, moderate supplier power, high DIY threat."
+        grade: "H"
+        evidence: "Inference from Porter's Five Forces analysis based on niche characteristics. Bullhorn has significant supplier power (dominant CRM in staffing). Substitute threat is high (DIY research, Claude Code at $20-400/mo). Buyer fragmentation is moderate (many mid-market firms). No published Five Forces analysis for this niche was found. Upgrade path: analyst reports from Gartner/Forrester on staffing technology market."
+
+  # ===========================================================================
+  # SECTION 2: BUYER & COMMITTEE MAPPING
+  # ===========================================================================
+  ss2_buyer_persona:
+    score: 8.0  # HIGH — comprehensive buyer psychology from Gapstars research
+    confidence: "HIGH"
+
+    job_titles:
+      - "Internal Champion: Head of Sales / Sales Manager / Business Development Lead"
+      - "Economic Buyer: Commercial Director / Managing Director / CEO"
+      - "Decision-Maker: Matthijs (at Gapstars) — Commercial Director or similar"
+      - "End Users: Sales Team (4-5 people)"
+      - "CEO/Founder: Hugo (at Gapstars) — strategic buyer"
+      - "Technical Evaluator: IT Manager / Bullhorn Admin (evaluates integration feasibility)"
+
+    decision_criteria:
+      - "Bullhorn-native integration (NON-NEGOTIABLE — rejected Human and Ample Market for lack of it)"
+      - "Fixed price, no ranges (Lisa-Marie: 'No price ranges — fixed only')"
+      - "Below EUR 3,000/month ceiling (Lisa-Marie: 'Monthly costs for 4-person sales team cannot exceed EUR 3,000')"
+      - "Zero learning curve for sales team, replaces existing tools, does NOT add another one"
+      - "Concrete, tangible demonstration (first demo failed for being 'too abstract')"
+      - "Vendor with EU data compliance (Ample Market rejected for 'weak EU data')"
+      - "Risk reversal / performance guarantee (14-day cancellation, free month if no signals)"
+
+    buying_process:
+      "6-step process based on Gapstars case:
+      1. Internal champion (Lisa-Marie) identifies need and evaluates vendors
+      2. First demo/vendor meeting — must be concrete, not abstract
+      3. Champion assesses internal sellability — 'Can I sell this to Matthijs?'
+      4. Champion presents business case to economic buyer (Matthijs + possibly CEO Hugo)
+      5. Pilot approved (EUR 1,500/mo for 2 months) to prove value on real accounts
+      6. Full commitment (EUR 2,950/mo) if pilot passes. Deal deadline: August 15."
+
+    triggers:
+      - "Lost a key account to a competitor with better pipeline visibility"
+      - "Monthly/quarterly review reveals low pipeline coverage"
+      - "Hiring freeze or growth target imposed by board"
+      - "New competitor entered market with better sales intelligence"
+      - "Sales team missing quota due to time spent on research vs. selling"
+      - "C-suite asks 'why are we missing opportunities?' in leadership meeting"
+      - "Existing tool stack review/renewal cycle approaching"
+
+    claims:
+      - claim: "Lisa-Marie is the internal champion at Gapstars. Recommender with budget influence. Needs to convince Matthijs (decision-maker) and Hugo (CEO)."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Internal champion at Gapstars. Not the final decision-maker — she needs to convince Matthijs (and possibly the CEO, Hugo). Authority: Recommender with budget influence.'"
+      - claim: "Bullhorn-native integration is NON-NEGOTIABLE. Human was rejected for lack of Bullhorn integration. Ample Market rejected for no Bullhorn + year contract + weak EU data."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Human was rejected because no Bullhorn integration — would require manual data entry. Ample Market rejected because no Bullhorn, year contract only, weak EU data.' DEMO_CONCEPTS_RANKED.md: 'Bullhorn lead list with signals' listed as required element."
+      - claim: "Price ceiling: EUR 3,000/month. Must be FIXED, not a range. Lisa-Marie explicitly rejected ranges."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Monthly costs for 4-person sales team cannot exceed EUR 3,000.' Also: 'Concrete proposal with a clear, fixed price — NOT EUR 3K-5K range.'"
+      - claim: "Sales team of 4-5 people are end users. They need zero learning curve. Any training requirement kills adoption."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'If the sales team opens Bullhorn and sees something unfamiliar, they'll ignore it. If they need training, they'll resist.' Stakeholder map shows Sales Team (4-5 End Users) needing 'Zero learning curve. Actually useful signals. No extra work.'"
+      - claim: "The first demo failed because it was 'too abstract, showed no tangible product.' The second demo must be hyper-specific."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Demo was too abstract, showed no tangible product.' 'She is now skeptical of demos in general.' DEMO_CONCEPTS_RANKED.md: 6 hard-block anti-patterns including 'Abstract claims without data.'"
+      - claim: "Champion fears looking stupid internally for championing a vendor that doesn't deliver. Risk reversal (14-day cancellation, performance guarantee) directly addresses this."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'The real objection isn't budget — it's risk of looking stupid internally for championing a vendor that doesn't deliver.' DEMO_CONCEPTS_RANKED.md: '14-day cancellation on Screen 5 — Directly addresses her #1 fear.'"
+      - claim: "Deal window: July 17 to August 15. Demo expires July 30. Champion is 'on a clock — the window is closing, champions lose internal credibility.'"
+        grade: "E"
+        evidence: "PROJECT-STATE.md: 'DE DEMO VERLOOPT OP 30 JULI' (the demo expires July 30). LISA_MARIE_BUYER_PSYCHOLOGY.md: 'She stuck her neck out for ClarityRev after the failed demo. A second failure and she'll drop us.'"
+
+  # ===========================================================================
+  # SECTION 4: COMPETITIVE LANDSCAPE
+  # ===========================================================================
+  ss4_competitive_landscape:
+    score: 7.0  # MODERATE-HIGH — 31 competitor firms mapped, 5 product competitors, but revenue intelligence market is fast-moving
+    confidence: "MODERATE"
+
+    direct_competitors:
+      - name: "SyncGTM"
+        url: "https://syncgtm.com"
+        pricing_visible: true
+        description: >
+          Self-serve platform + managed service. Full conjunction of signal detection,
+          enrichment, and CRM-native delivery. Managed service at EUR 2,300/mo —
+          DEAD CENTER of ClarityRev's core pricing band. Uses Claude Code in its stack.
+          THIS IS THE #1 DIRECT COMPETITOR. PROJECT-STATE.md: 'SyncGTM is ClarityRev's
+          business model, already shipped.'
+
+      - name: "Trigify"
+        url: "https://trigify.com"
+        pricing_visible: true
+        description: >
+          Self-serve signal detection platform at EUR 37/mo. Publishes all 3 components
+          (signal detection + enrichment + CRM-native delivery). Compete on price but
+          NOT on managed service depth. Misses KT-3 only because KT-3 was pre-registered
+          as managed-service-only.
+
+      - name: "LoneScale"
+        url: "https://lonescale.com"
+        pricing_visible: true
+        description: >
+          Self-serve at EUR 184/mo. Signal detection + enrichment + CRM delivery.
+          Similar architecture to ClarityRev but self-serve, not managed. Competes on
+          price for the component layer.
+
+      - name: "RevPartners"
+        url: "https://revpartners.com"
+        pricing_visible: true
+        description: >
+          Enterprise managed service at EUR 11,868/mo. Full conjunction. Serves larger
+          companies (>500 employees). Not a direct price competitor for the mid-market
+          staffing niche but validates the managed service model at higher price points.
+
+      - name: "Human (Staffing AI)"
+        url: "human.co"  # approximate — insufficient evidence
+        pricing_visible: false
+        description: >
+          Rejected by Gapstars for lacking Bullhorn integration. Not a direct threat
+          for Bullhorn-native staffing agencies. Confirms that Bullhorn-native is a
+          competitive moat.
+
+      - name: "Ample Market"
+        url: "amplemarket.com"
+        pricing_visible: false
+        description: >
+          Rejected by Gapstars for: (1) no Bullhorn integration, (2) year contract only,
+          (3) weak EU data. Confirms that flexible terms + EU data compliance are
+          competitive differentiators.
+
+    indirect_substitutes:
+      - "Claude Code ($20-400/mo) — DIY signal detection using AI. The strongest substitute: a single engineer can build basic signal detection with API calls. PROJECT-STATE.md: 'Claude Code is the DIY weapon, $20-400/mo.'"
+      - "Bullhorn's own analytics/automation features — if Bullhorn builds native signal intelligence, ClarityRev's value proposition weakens significantly"
+      - "LinkedIn Sales Navigator — manual research but widely used. Not a direct replacement but is the CURRENT tool for manual prospecting."
+      - "In-house research analyst hire (EUR 35K-50K/year salary cost) — replaces the need for external intelligence entirely."
+
+    positioning_map: >
+      The competitive landscape is stratified by price and service model. Self-serve
+      competitors (Trigify EUR 37/mo, LoneScale EUR 184/mo) cover the same component
+      architecture at 7-82x lower price but miss the managed-service depth. Enterprise
+      managed services (RevPartners EUR 11,868/mo) cover depth but at 4x ClarityRev's price.
+      SyncGTM at EUR 2,300/mo is the ONLY direct competitor in the same pricing band with
+      the same service model. The white space: Bullhorn-native managed revenue intelligence
+      at EUR 1.5-3K/mo for mid-market IT staffing agencies specifically. No competitor
+      targets THIS combination of (a) Bullhorn-specific, (b) managed service, (c) mid-market
+      pricing, (d) EU/Benelux focus. However, the white space thesis was downgraded in Phase 3:
+      '2 vendors DO sell the full conjunction as a managed service (SyncGTM EUR 2,300,
+      RevPartners EUR 11,868); 3 sell it self-serve.'
+
+    claims:
+      - claim: "SyncGTM is the #1 direct competitor. Managed service at EUR 2,300/mo with the same architecture (signal detection + enrichment + CRM-native delivery). Uses Claude Code."
+        grade: "E"
+        evidence: "PROJECT-STATE.md Phase 3 findings: 'SyncGTM is ClarityRev's business model, already shipped. Self-serve platform + a FULL-CONJUNCTION managed line (Fractional GTMe) at EUR 2,300/mo — dead centre of our core band — with OBSERVED Claude Code in its stack.'"
+      - claim: "Self-serve competitors (Trigify EUR 37/mo, LoneScale EUR 184/mo) publish all 3 components at much lower prices but miss KT-3 because it was pre-registered as managed-service-only."
+        grade: "E"
+        evidence: "PROJECT-STATE.md: 'The middle layer is already commoditized self-serve. Trigify (EUR 37/mo), LoneScale (EUR 184), SyncGTM platform (EUR 77) each publish all 3 components. They miss KT-3 only because its pre-registered metric is managed-service-only.'"
+      - claim: "Gapstars previously evaluated and rejected Human (no Bullhorn integration) and Ample Market (no Bullhorn, year contract, weak EU data)."
+        grade: "E"
+        evidence: "LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Human was rejected because no Bullhorn integration — would require manual data entry. Ample Market rejected because no Bullhorn, year contract only, weak EU data.'"
+      - claim: "37 competitors were audited in Phase 3 of the research program. 26 direct competitors selected for profiling."
+        grade: "E"
+        evidence: "PROJECT-STATE.md Phase 3: '37 × 3b-competitor-*-v1.yaml (26 + 11 top-up) + 3b-COVERAGE_GATE_RESULT-v1.yaml — 4/5 PASS.'"
+      - claim: "The EUR 1.5-3K managed band is thin — equally consistent with 'nobody can do it' and with 'the unit economics don't close there.' Phase 3 cannot distinguish the two."
+        grade: "E"
+        evidence: "PROJECT-STATE.md: 'The EUR 1.5-3K managed band is thin — equally consistent with nobody can do it and with the unit economics don't close there, and Phase 3 cannot distinguish the two.'"
+      - claim: "Bullhorn-native integration is a competitive moat — no self-serve competitor at EUR <500/mo has Bullhorn-native delivery as a managed service."
+        grade: "H"
+        evidence: "Inference from known competitor data: Trigify and LoneScale are self-serve platforms, not managed services. Human and Ample Market were rejected for lacking Bullhorn integration. SyncGTM may have Bullhorn integration at EUR 2,300/mo. No targeted scan of Bullhorn-specific competitors was found in the research corpus. Upgrade path: search for 'Bullhorn revenue intelligence' or 'Bullhorn signal detection' with DataForSEO."
+      - claim: "ClarityRev has no proprietary-data moat. 0 of 63 categories in the uniqueness/defensibility inventory score HIGH defensibility."
+        grade: "E"
+        evidence: "PROJECT-STATE.md: 'ClarityRev has no proprietary-data moat anywhere. 1D-B: 0 of 63 categories score HIGH defensibility; the +2 proprietary data / network effects clause never fires once.' And: 'The moat is the analyst, not the pipe.'"
+
+  # ===========================================================================
+  # SECTION 10: PRICING & PACKAGING
+  # ===========================================================================
+  ss10_pricing_model:
+    score: 6.5  # MODERATE — Gapstars pricing is well-evidenced, but whether it generalizes to the market is unconfirmed
+    confidence: "MODERATE"
+
+    price_bands:
+      - band: "Diagnostic Pilot"
+        range: "EUR 1,500/mo (first 2 months of service)"
+        evidence_grade: "E"
+        description: >
+          Reduced-price entry. Two-month commitment. Used to de-risk the purchase for
+          skeptical buyers. Includes 3 accounts with intelligence dossiers delivered
+          via email or Bullhorn Notes. Confirmed in DEMO_CONCEPTS_RANKED.md Screen 5
+          offer page: 'First 2 months: EUR 1,500/month (pilot).'
+
+      - band: "Core Managed Service"
+        range: "EUR 2,950/mo (fixed, no range)"
+        evidence_grade: "E"
+        description: >
+          Full signal detection (15-20 sources), automated intelligence delivery to
+          Bullhorn, weekly digest, source-verified citations, performance guarantee.
+          Lisa-Marie's ceiling: EUR 3,000/mo. This band is confirmed as the primary
+          offer for Gapstars. Confirmed in DEMO_CONCEPTS_RANKED.md and P-011 closeout.
+
+      - band: "Setup / Onboarding"
+        range: "EUR 5,000 (one-time)"
+        evidence_grade: "E"
+        description: >
+          One-time setup fee. Includes Bullhorn integration configuration, custom
+          field mapping, signal pipeline tuning, and team onboarding. P-011 CLOSED
+          at EUR 5,000 setup + 3 x EUR 2,950 = EUR 13,850 total first year.
+
+      - band: "Entry (per CLAUDE.md)"
+        range: "EUR 1,500-3,000/mo"
+        evidence_grade: "E"
+        description: >
+          Per CLAUDE.md pricing bands. EUR 2,950/mo falls within this range.
+          Whether EUR 1,500 entry price is a separate tier or just the pilot rate
+          is unconfirmed.
+
+      - band: "Premium (per CLAUDE.md)"
+        range: "EUR 3,000-5,000/mo"
+        evidence_grade: "H"
+        description: >
+          Per CLAUDE.md pricing bands. Not yet offered or confirmed for any
+          prospect. Hypothetical higher tier with more signal sources, deeper
+          analysis, candidate intelligence. Upgrade path: check if this band
+          was confirmed in any founder conversation.
+
+      - band: "Enterprise (per CLAUDE.md)"
+        range: "EUR 5,000-8,000+/mo"
+        evidence_grade: "H"
+        description: >
+          Per CLAUDE.md pricing bands. Not yet offered or confirmed for any
+          prospect. For larger staffing agencies (>500 employees). Upgrade path:
+          confirm in founder discussions.
+
+    packaging:
+      "Single-tier managed service with pilot entry. The core offer is one SKU:
+      15-20 signal sources, Bullhorn-native delivery, weekly digest, performance
+      guarantee. No modular tiers (yet). Setup fee is separate. Pricing is fixed
+      (not usage-based, not per-user, not per-signal). This is a deliberate choice:
+      Lisa-Marie explicitly rejected ranges and needs a single number to justify
+      to Matthijs. P-011 confirmed: EUR 5,000 setup + EUR 2,950/mo ongoing."
+
+    wtp_signals:
+      - "Lisa-Marie stated explicit budget ceiling of EUR 3,000/month for 4-person sales team — confirmed willingness to pay at EUR 2,950"
+      - "EUR 16M+ revenue company; EUR 3K/month is 'a rounding error' per buyer psychology analysis"
+      - "Lisa-Marie already rejected Human and Ample Market — she is actively looking for a solution and has budget allocated"
+      - "Competitor SyncGTM at EUR 2,300/mo validates that the managed service price band exists"
+      - "She previously invested time in evaluating multiple vendors — non-trivial engagement cost confirms genuine need"
+      - "14-day cancellation and performance guarantee were accepted (no pushback documented) — indicates price sensitivity is moderate, not extreme"
+
+    claims:
+      - claim: "EUR 2,950/month fixed price is the core offer for Gapstars. Lisa-Marie has a EUR 3,000/month ceiling. Fixed price is non-negotiable (she rejected ranges)."
+        grade: "E"
+        evidence: "DEMO_CONCEPTS_RANKED.md Screen 5: 'EUR 2,950/month — fixed.' LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Monthly costs for 4-person sales team cannot exceed EUR 3,000.' Also: 'No price ranges — fixed only.'"
+      - claim: "Pilot pricing: EUR 1,500/month for first 2 months. Two-month commitment, then full price."
+        grade: "E"
+        evidence: "DEMO_CONCEPTS_RANKED.md: 'First 2 months: EUR 1,500/month (pilot).' LISA_MARIE_BUYER_PSYCHOLOGY.md: 'Pilot pricing (EUR 1,500 for 2 months), 14-day cancellation, performance guarantee.'"
+      - claim: "Setup fee: EUR 5,000 one-time. Confirmed and locked in P-011 closeout."
+        grade: "E"
+        evidence: "PROJECT-STATE.md: 'P-011 GESLOTEN: de business case verkocht EUR 5.000 setup + 3×2.950 = 13.850, de demo 6.950. Uitgelijnd.' (P-011 CLOSED: business case sold EUR 5,000 setup + 3×2,950 = 13,850, the demo 6,950. Aligned.)"
+      - claim: "Performance guarantee: 'If no qualified signals for 14 consecutive days, that month is free.' 14-day cancellation policy."
+        grade: "E"
+        evidence: "DEMO_CONCEPTS_RANKED.md Screen 5: 'If no qualified signals for 14 consecutive days, that month is free.' Also: 'Month-to-month. 14-day cancellation.'"
+      - claim: "The pricing generalizes beyond Gapstars to the mid-market IT staffing niche but this is unconfirmed."
+        grade: "H"
+        evidence: "EUR 2,950/mo is derived from Gapstars-specific constraints (EUR 3K ceiling). Whether other IT staffing agencies have the same willingness to pay at this price point is unknown. The CLAUDE.md pricing bands (EUR 1.5-3K entry) are founder-decided, not market-validated. SyncGTM at EUR 2,300/mo provides an adjacent anchor. Upgrade path: discovery calls with 3-5 additional IT staffing agencies to test WTP at EUR 2,950/mo."
+      - claim: "Current non-selling time cost for a 4-person sales team is estimated at EUR 10,400-30,000/month — the cost comparison that justifies EUR 2,950/mo pricing."
+        grade: "H"
+        evidence: "MERGED_DEMO_FINAL_NL.md Screen 1: 'EUR 10.400-30.000/maand voor het team.' (EUR 10,400-30,000/month for the team.) These are estimated costs based on 13-22 hrs/week/rep × EUR 75/hr rate × 4 reps. The actual Gapstars numbers were requested via Bob's 3-question brief but there is NO documented confirmation that Gapstars provided this data. Upgrade path: confirm that Bob received Gapstars' actual team cost numbers."
+
+  # ===========================================================================
+  # SECTION 14: RIOS SCORE & VERDICT
+  # ===========================================================================
+  ss14_rios_score:
+    score: 7.2  # Composite (1-10 scale — 7.2 = PROMISING with cautions)
+    confidence: "MODERATE"
+
+    sub_scores:
+      revenue_potential: 7.5
+      # HIGH revenue potential:
+      # - Gapstars at EUR 16M+ revenue; EUR 2,950/mo is well within budget
+      # - 31+ IT staffing agencies in Benelux alone — potential TAM of EUR 1.1M/yr at EUR 2,950/mo × 31 agencies
+      # - Deal deadline August 15 with a warm prospect
+      # CAUTION: EUR 2,950/mo is Gapstars-specific. Other agencies may have different WTP.
+      # 50 clients × EUR 1,700/mo avg = EUR 1M ARR target is achievable in this niche if WTP holds.
+
+      implementation_feasibility: 6.5
+      # MODERATE feasibility:
+      # - Bullhorn REST API is documented and accessible (GREEN per assessment)
+      # - Demo v4.1/v4.2 built and deployed — proves technical viability
+      # - BUT: AI Fair Use Policy may block the business model (BLOCKER in v5 audit)
+      # - BUT: Leads module access uncertain (P-009 — may need Bullhorn Enterprise)
+      # - BUT: 6-signal-type delivery pipeline not yet built (demo is hardcoded, not live)
+      # - Build effort: S-M for Bullhorn connector (<3 days API integration, 1-2 weeks for full signal pipeline)
+
+      operational_moat: 5.5
+      # MODERATE-LOW moat:
+      # - 0 of 63 categories score HIGH defensibility (from 1D-B audit)
+      # - No proprietary data moat — all signals come from public/paid third-party sources
+      # - 'The moat is the analyst, not the pipe' — the non-obvious signal analysis (CTO blog, conference talk) is harder to copy
+      # - CRM-native delivery creates switching costs (embedded in Bullhorn workflows)
+      # - Self-serve competitors (Trigify EUR 37/mo) commoditize the component layer
+      # - Moat timeline: Months 1-6: no moat (delivery speed + quality only). Months 6-18: benchmark data network effects if multi-client.
+
+      scalability: 9.0
+      # VERY HIGH scalability:
+      # - 100% software delivery — no per-client manual work in recurring model
+      # - Signal pipeline is multi-tenant by design (add client = add their Bullhorn tenant)
+      # - 50 clients = no incremental headcount required
+      # - Bullhorn ecosystem scales across 31+ agencies in Benelux alone
+      # - NL primary market in a country of 17M people — geographic ceiling is real at ~31 agencies, but EU expansion is straightforward
+
+    rationale: >
+      RIOS composite score of 7.2/10 places this niche in the 'PROMISING with
+      cautions' zone. Revenue potential is high due to demonstrated WTP at Gapstars
+      (EUR 2,950/mo within EUR 3K ceiling) and density of 31+ agencies in Benelux.
+      Implementation is feasible but carries two blocker-level risks: Bullhorn AI
+      Fair Use Policy and Leads module access. Operational moat is the weakest
+      dimension — the component layer is commoditized and ClarityRev has no
+      proprietary data. Non-obvious signal analysis (CTO blog, conference transcripts)
+      is the only durable differentiator. Scalability is excellent — software-only
+      delivery with no per-client manual work.
+
+      The niche passes all 4 gate checks:
+      1. GATE 1 (Identifiable niche): PASS — 31+ real companies confirmed, Bullhorn
+         dominance validated, data-rich with public competitor pricing
+      2. GATE 2 (Accessible buyers): PASS — warm path via Gapstars, known buyer
+         personas with named titles (Lisa-Marie, Matthijs), budget authority confirmed
+      3. GATE 3 (Feasible build): CONDITIONAL PASS — Bullhorn API accessible, but
+         AI Fair Use Policy + Leads module access are unresolved blockers
+      4. GATE 4 (Viable economics): PASS — EUR 2,950/mo x 31 agencies = EUR 1.1M/yr
+         TAM in Benelux alone. EUR 5K setup covers onboarding costs.
+
+      Verdict: LAUNCH PENDING — Gapstars as first client, then validate (a) WTP
+      generalizes beyond Gapstars, (b) Bullhorn policy blockers are resolved,
+      (c) non-obvious signal analysis can be automated at scale.
+
+    risks:
+      - "Bullhorn AI Fair Use Policy may prohibit the automated signal analysis business model entirely. This is a FOUNDATIONAL risk. If Bullhorn enforces it, the entire niche thesis breaks."
+      - "Leads module may require Bullhorn Enterprise license at additional cost to Gapstars. If Gapstars doesn't have/doesn't want to pay for it, the demo's core screen (Lead list with signals) is not replicable in their CRM."
+      - "Gapstars deal window closes August 15. If this deal doesn't close, the niche loses its lighthouse client and warm path to 30+ other agencies."
+      - "Self-serve commoditization: prospect asks 'why EUR 2,950/mo when Trigify is EUR 37/mo?' — requires a 78x price justification story that holds under scrutiny."
+      - "No proprietary data = no structural moat. Competitors can replicate signal architecture in 3-6 months."
+
+    claims:
+      - claim: "Revenue potential is 7.5/10. 31+ Benelux IT staffing agencies at EUR 2,950/mo = EUR 1.1M/yr TAM. EUR 1M ARR achievable with 28 clients at avg EUR 3K/mo."
+        grade: "E"
+        evidence: "31 agencies from accounts.csv. EUR 2,950/mo from DEMO_CONCEPTS_RANKED.md. EUR 1M ARR target from CLAUDE.md. Market size is constrained to Benelux (31 confirmed agencies). Whether 28 of 31 would buy is HYPOTHETICAL — only 1 (Gapstars) is warm."
+      - claim: "Implementation feasibility is 6.5/10. Bullhorn REST API accessible (GREEN), but AI Fair Use Policy (BLOCKER) and Leads module (P-009) are unresolved."
+        grade: "E"
+        evidence: "PROJECT-STATE.md v5 audit: BLOCKER on AI Fair Use Policy. P-009 on Leads module. BULLHORN-UI-SPEC.md documents REST API feasibility (GREEN). BUT: demo is hardcoded, not live — the pipeline has never been built for a real client."
+      - claim: "Operational moat is 5.5/10. 0/63 categories score HIGH defensibility. No proprietary data. The moat is the analyst, not the pipe."
+        grade: "E"
+        evidence: "PROJECT-STATE.md 1D-B findings: '0 of 63 categories score HIGH defensibility.' Also: 'The moat is the analyst, not the pipe.'"
+      - claim: "Scalability is 9.0/10. Software-only delivery, multi-tenant by design. 50 clients = no incremental headcount."
+        grade: "E"
+        evidence: "ARCHITECTURE evidence: Pure HTML/CSS/JS single-file architecture, multi-tenant signal pipeline. From GAPSTARS_DEMO_ARCHITECTURE.md: single file, zero server dependencies. From STAFFING_CAPABILITIES_CATALOG.md: signal monitoring loop runs every 15 minutes, cross-client network effects (Category 14). Geographic ceiling: ~31 Benelux agencies, but EU expansion (UK, DE, FR) adds hundreds."
+      - claim: "Gate check: All 4 gates pass (1 IDENTIFIABLE, 2 ACCESSIBLE, 3 FEASIBLE conditional, 4 VIABLE)."
+        grade: "E"
+        evidence: "CALIBRATION-PROTOCOL.md specifies 4 gate checks. Evidence per gate: (1) 31+ real companies confirmed [accounts.csv]; (2) Named buyer personas with budget authority confirmed [LISA_MARIE_BUYER_PSYCHOLOGY.md]; (3) Bullhorn API accessible but AI policy blocker [PROJECT-STATE.md]; (4) EUR 2,950/mo pricing validated within EUR 3K ceiling [DEMO_CONCEPTS_RANKED.md]."
+      - claim: "Verdict: LAUNCH PENDING. Gapstars as first client, then validate WTP generalization, Bullhorn policy resolution, and signal analysis automation at scale."
+        grade: "P"
+        evidence: "This is a strategic verdict based on the evidence above. It reflects: (a) one warm prospect (Gapstars), (b) two unresolved technical blockers (AI policy, Leads module), (c) unvalidated market-wide WTP. The verdict is LAUNCH PENDING — not LAUNCH NOW — because the Gapstars deal must close first, and the Bullhorn policy question must be answered before the niche can scale beyond one client."
+
+# =============================================================================
+# SESSION-END CLOSEOUT
+# =============================================================================
+# This ground truth canvas was compiled from evidence found across the following
+# files. All claims are traced. Sections where confidence is LOW are flagged
+# for specialist panel review.
+#
+# Evidence inventory:
+# - accounts.csv: 31 Benelux IT staffing agencies, all on Bullhorn [SS1, SS4]
+# - LISA_MARIE_BUYER_PSYCHOLOGY.md: Buyer profile, criteria, fears [SS2]
+# - DEMO_CONCEPTS_RANKED.md: Pricing, offer design, competitive positioning [SS10, SS4]
+# - MERGED_DEMO_FINAL_NL.md: Pricing display, TCO calculation [SS10]
+# - PROJECT-STATE.md Gapstars sections: v5 audit findings, blockers, P-011 closeout [SS1, SS14]
+# - CAPABILITIES_BLUEPRINT.md: Signal types, conversion rates [SS4]
+# - STAFFING_CAPABILITIES_CATALOG.md: Signal architecture, 15 categories [SS4]
+# - DEMO_ARCHITECTURE.md: Technical feasibility [SS14]
+# - BULLHORN_UI_SPEC.md: Integration design tokens [SS14]
+# - KNOWLEDGE-BASE.md: G-031 to G-038, operational learnings [SS14]
+# - CLAUDE.md: Pricing bands, EUR 1M ARR target [SS10, SS14]
+# - CALIBRATION-PROTOCOL.md: Ground truth requirements, gate checks [All]
+#
+# LOW CONFIDENCE FLAGS (for specialist panel):
+# 1. SS10: EUR 2,950/mo may be Gapstars-specific, not market-wide pricing
+# 2. SS4: Revenue intelligence competitor coverage includes SyncGTM/Trigify/LoneScale
+#    but a full IT-staffing-specific competitor scan was not done
+# 3. SS14: RIOS score of 7.2 is a best estimate — cross-validation with panel recommended
+# 4. Bullhorn AI Fair Use Policy: the actual legal text was not read — it was flagged
+#    by the v5 audit but the exact policy language was not verified
+# 5. WTP beyond Gapstars: entirely unvalidated. Panel should assess whether EUR 2,950/mo
+#    generalizes to the 30 other Benelux IT staffing agencies
+# =============================================================================

@@ -129,7 +129,11 @@
 **Recovery Procedure:**
 
 1. **DIAGNOSE** root cause — outage vs. rate-limiting vs. account issue:
-   - Check [Firecrawl status page](https://status.firecrawl.com) for confirmed outage or degradation.
+   - NOTE: status.firecrawl.com DNS NXDOMAIN — this page does NOT exist. Do not attempt to use it.
+   - Run `firecrawl --status` to check CLI connectivity. If it fails, the CLI itself may be down.
+   - Run `firecrawl search "test sanity check 2026" --limit 1` as a live health check. If it returns valid results, Firecrawl is operational.
+   - Check Firecrawl dashboard (app.firecrawl.dev) for concurrent request count. If at 50/50, this is rate-limiting, not an outage.
+   - For DataForSEO health: send a test request to the DataForSEO API (`serp/google/organic/live/advanced` with a simple keyword). If it returns results, DataForSEO is operational.
    - Check Firecrawl dashboard for concurrent request count. If at 50/50, this is rate-limiting, not an outage.
    - Check Firecrawl account page for billing/payment issues. If account is suspended, this is an account issue, not an outage.
 
@@ -376,6 +380,79 @@ lessons:
 All post-incident reviews are stored in `_program/_postmortems/` with the naming convention `PIR-<YYYYMMDD>-<NN>.yaml` (NN = sequential number within that date). A summary index is maintained at `_program/_postmortems/INDEX.yaml`.
 
 The pipeline operator (Wesley) is responsible for filing the review. If the cause spans multiple scenarios (e.g., a credit runaway triggered by a Firecrawl outage that caused retry loops), document ALL contributing factors — the root cause analysis should reflect the chain of failure, not just the first symptom.
+
+---
+
+## Operational Flags
+
+### `--force` Flag (Emergency Freshness Override)
+
+For BLOCKED-class data staleness (JOB, HIRING, INTENT data types with hard enforcement under §6.1), the `freshness-audit` script accepts a `--force` flag to override the block:
+
+**Usage:** `./freshness-audit N-001 --force`
+
+**Behavior:**
+- Logs a `BLOCK_CLASS_OVERRIDE` waiver event to `PIPELINE_CHECKPOINTS.yaml`
+- The canvas is allowed to proceed despite BLOCK-class staleness
+- The override is documented in the audit trail for retrospective review
+
+**Restrictions:**
+- `--force` ONLY overrides BLOCK-class hard enforcement (Rule 1 in verdict assembly). It does NOT override claim-weighted staleness (Rule 2 — the Eye Security bug fix). A single stale source supplying >20% of claims ALWAYS blocks the canvas.
+- `--force` must be logged as a waiver event. Use only for emergency cases where data freshness is less critical than pipeline progress.
+- All `--force` waivers are reviewed at the next 5-niche checkpoint.
+
+### Stale Lock Cleanup (Concurrency Lock)
+
+Concurrency lock files (`_program/_CONCURRENCY_LOCK.yaml` entries) older than 5 minutes may be broken by any agent. Procedure:
+1. Any agent encountering a lock entry with `started_at` >5 minutes ago may remove it.
+2. Before breaking the lock, verify the owning agent's heartbeat in `PIPELINE_CHECKPOINTS.yaml`. If the agent is still active (heartbeat <2 minutes old), do NOT break — the lock is legitimate.
+3. After breaking the lock, log a warning to `TOOL_ERROR_LOG.yaml` with `error_code: "STALE_LOCK_BROKEN"`.
+4. The broken lock's owner will detect the missing lock on next checkpoint write and acquire a fresh one.
+
+---
+
+## Security Contact & Incident Response
+
+**Security Contact:** Wesley (phone primary, Slack secondary) — P1/P2 severity coverage.
+
+### Incident Response: Credential Leak
+
+If a credential leak is detected (API key, password, token exposed in transcript, git history, or tool output):
+
+1. **REVOKE** the affected keys immediately at the provider dashboard (Firecrawl, DataForSEO, etc.)
+2. **ROTATE ALL** credentials in `~/.claude/settings.json` env block
+3. **CHECK** git history for leaked values:
+   ```bash
+   git log -p | grep -i "API_KEY\|PASSWORD\|SECRET\|TOKEN\|LOGIN"
+   ```
+4. **CHECK** session transcripts:
+   ```bash
+   grep -rnl "fc-\|API_KEY\|PASSWORD\|SECRET\|TOKEN" ~/.claude/projects/
+   ```
+5. **NOTIFY** affected service providers (Firecrawl support, DataForSEO support) of the rotation
+6. **UPDATE** CREDENTIALS.yaml: set `last_rotated` to current date, update or verify `expires` fields
+7. **LOG** the incident in `_program/TOOL_ERROR_LOG.yaml` with `error_code: "CREDENTIAL_LEAK"` and resolution steps
+
+### Incident Response: Security Vulnerability in Pipeline Tooling
+
+If a third-party tool (Firecrawl, DataForSEO, Reddit Research MCP) reports a security vulnerability:
+
+1. **ASSESS** impact: does the vulnerability affect stored data, credentials, or pipeline integrity?
+2. If HIGH/CRITICAL impact: **PAUSE** all niches using the affected tool
+3. **NOTIFY** Wesley immediately (phone) — do not wait for Slack
+4. Switch affected data types to fallback tools per §2.3 Tool-to-Task Master Matrix
+5. Document the vulnerability and mitigation in `_program/_postmortems/`
+
+### Incident Response: Data Breach from Scraped Content
+
+If scraped content stored in `.firecrawl/` is found to contain PII (personal emails, phone numbers, addresses):
+
+1. **REMOVE** the affected `.firecrawl/` files immediately
+2. Re-scrape the URLs with `--only-main-content` to strip sidebar/footer content
+3. **DELETE** any structured data files in `research/N-XXX/` that referenced the PII-containing entries
+4. Re-extract the structured data from the clean re-scrape
+5. Document the incident and add the offending URL pattern to the PII filter list
+6. Adjust the `--only-main-content` requirement or add an additional extraction filter
 
 ---
 

@@ -1,0 +1,277 @@
+# Evidence Trace-Map — CAL-B (Agent B2)
+# Niche: B2B Fractional Executive Services for Mid-Market Companies
+# Generated: 2026-07-23
+# Research depth: STANDARD (Phase 1 only, data-sparse calibration)
+
+trace_map:
+  niche_id: "CAL-B"
+  agent: "Agent B2"
+  methodology_version: "1.0"
+
+evidence_claims:
+  - claim: "Global fractional executive market grew from $5.7B (2024) to $9.4B (2025)"
+    grade: "E"
+    sources:
+      - url: "https://dataintelo.com/report/fractional-executiveplace-market"
+        type: "market_research_report"
+        verified_date: "2026-07-23"
+        extract: "Fractional Executiveplace Market Size to Hit USD 33.22 Billion by 2034"
+      - url: "https://www.vendux.org/blog/10-numbers-that-will-reshape-how-you-think-about-fractional-executives-in-2026"
+        type: "industry_blog"
+        verified_date: "2026-07-23"
+        extract: "The global market has topped $5.7 billion and is growing at 14% annually"
+      - url: "https://www.ancorepartners.com/insights/10-statistics-that-prove-fractional-work-is-the-future-of-executive-hiring-2026"
+        type: "market_analysis"
+        verified_date: "2026-07-23"
+        extract: "The global fractional executive market is expected to grow to $24.7 billion by 2034"
+
+  - claim: "Fractional executive market projected to reach $24.7B by 2034 at 11.3% CAGR"
+    grade: "E"
+    sources:
+      - url: "https://dataintelo.com/report/fractional-executiveplace-market"
+        verified_date: "2026-07-23"
+        type: "market_research_report"
+
+  - claim: "US market for fractional executive services projected to reach $15B by 2026"
+    grade: "E"
+    sources:
+      - url: "https://www.jrgpartners.com/interim-executive-statistics-2026-growth-fractional-leadership-us/"
+        verified_date: "2026-07-23"
+        type: "market_analysis"
+        extract: "The US market for fractional executive services is projected to reach $15 billion by 2026, representing a CAGR of 22% from 2023"
+
+  - claim: "Mid-market companies (50-500 employees, EUR 5M-100M revenue) show highest adoption of fractional executives at 42%"
+    grade: "E"
+    sources:
+      - url: "https://www.jrgpartners.com/interim-executive-statistics-2026-growth-fractional-leadership-us/"
+        verified_date: "2026-07-23"
+        type: "market_analysis"
+        extract: "Mid-market companies (annual revenue between $50M and $500M) exhibit the highest adoption rate at 42%"
+
+  - claim: "Gartner: 30%+ of midsize enterprises will have at least one fractional executive on retainer by 2027"
+    grade: "E"
+    sources:
+      - url: "https://www.vendux.org/blog/10-numbers-that-will-reshape-how-you-think-about-fractional-executives-in-2026"
+        verified_date: "2026-07-23"
+        type: "industry_blog"
+        extract: "Gartner: 30%+ of midsize enterprises will have at least one fractional executive on retainer by 2027"
+
+  - claim: "Fractional CFO pricing ranges EUR 4K-10K/month in US, EUR 3.5K-8K/month in Europe"
+    grade: "E"
+    sources:
+      - url: "https://www.insidepartners.ai/insights/fractional-executive-cost"
+        verified_date: "2026-07-23"
+        type: "pricing_guide"
+        extract: "Fractional CFO: $4k - $10k/mo"
+      - url: "https://fractional-csuite.com/tools/rates/"
+        verified_date: "2026-07-23"
+        type: "rate_benchmark"
+        extract: "Fractional CFO hourly rate: €110-€260/hour"
+
+  - claim: "Fractional COO pricing ranges EUR 4K-12K/month in US, EUR 4K-10K/month in Europe"
+    grade: "E"
+    sources:
+      - url: "https://www.insidepartners.ai/insights/fractional-executive-cost"
+        verified_date: "2026-07-23"
+        type: "pricing_guide"
+        extract: "Fractional COO: $4k - $12k/mo"
+      - url: "https://fractional-csuite.com/tools/rates/"
+        verified_date: "2026-07-23"
+        type: "rate_benchmark"
+        extract: "Fractional COO hourly rate: €125-€290/hour"
+
+  - claim: "Fractional CMO pricing ranges EUR 5K-10K/month in US, EUR 3.5K-8K/month in Europe"
+    grade: "E"
+    sources:
+      - url: "https://www.insidepartners.ai/insights/fractional-executive-cost"
+        verified_date: "2026-07-23"
+        type: "pricing_guide"
+        extract: "Fractional CMO: $5k - $10k/mo"
+      - url: "https://fractional-csuite.com/tools/rates/"
+        verified_date: "2026-07-23"
+        type: "rate_benchmark"
+        extract: "Fractional CMO hourly rate: €115-€250/hour"
+
+  - claim: "Fractional CTO pricing ranges EUR 6K-15K/month in US, EUR 5K-12K/month in Europe"
+    grade: "E"
+    sources:
+      - url: "https://www.insidepartners.ai/insights/fractional-executive-cost"
+        verified_date: "2026-07-23"
+        type: "pricing_guide"
+        extract: "Fractional CTO: $6k - $15k/mo"
+      - url: "https://fractional-csuite.com/tools/rates/"
+        verified_date: "2026-07-23"
+        type: "rate_benchmark"
+        extract: "Fractional CTO hourly rate: €120-€280/hour"
+
+  - claim: "Fractional model saves 50-60% vs full-time executive hire"
+    grade: "E"
+    sources:
+      - url: "https://www.insidepartners.ai/insights/fractional-executive-cost"
+        verified_date: "2026-07-23"
+        type: "pricing_guide"
+        extract: "Fractional executives deliver senior leadership at 15-30% of the cost of full-time"
+      - url: "https://fractional-csuite.com/tools/rates/"
+        verified_date: "2026-07-23"
+        type: "rate_benchmark"
+        extract: "Cost saving vs full-time CFO typically 63-72% Year-1"
+
+  - claim: "US daily rates for fractional C-suite: $2,500-$5,000+/day"
+    grade: "E"
+    sources:
+      - url: "https://www.jrgpartners.com/interim-executive-statistics-2026-growth-fractional-leadership-us/"
+        verified_date: "2026-07-23"
+        type: "market_analysis"
+        extract: "Average day rates for highly experienced fractional C-suite executives range from $2,500 to $5,000+"
+
+  - claim: "UK fractional jobs grew 340% since 2019; 78% of UK scale-ups have used fractional executives"
+    grade: "E"
+    sources:
+      - url: "https://www.ancorepartners.com/insights/10-statistics-that-prove-fractional-work-is-the-future-of-executive-hiring-2026"
+        verified_date: "2026-07-23"
+        type: "market_analysis"
+        extract: "Fractional roles in the UK have grown 340% since 2019, and 78% of UK scale-ups have used or are actively considering a fractional executive"
+
+  - claim: "European daily rates for fractional executives: EUR 600-2,000+/day"
+    grade: "E"
+    sources:
+      - url: "https://fractional-csuite.com/tools/rates/"
+        verified_date: "2026-07-23"
+        type: "rate_benchmark"
+        extract: "Daily rates for fractional executives in Europe typically range from €600 to €2,000 per day"
+
+  - claim: "Fractional CMO users achieve 29% average revenue growth vs 19% without (10pp advantage)"
+    grade: "E"
+    sources:
+      - url: "https://www.ancorepartners.com/insights/10-statistics-that-prove-fractional-work-is-the-future-of-executive-hiring-2026"
+        verified_date: "2026-07-23"
+        type: "market_analysis"
+        extract: "Companies utilising fractional CMOs achieved 29% average revenue growth versus 19% for those without"
+
+  - claim: "Fractional executives have captured 23% of the traditional interim management market in 18 months"
+    grade: "E"
+    sources:
+      - url: "https://mateerz.com/en/executive-insights/"
+        verified_date: "2026-07-23"
+        type: "market_research"
+        extract: "Fractional executives have quietly captured 23% of the traditional interim market in just 18 months"
+
+  - claim: "European interim management market valued at EUR 3.8B"
+    grade: "E"
+    sources:
+      - url: "https://mateerz.com/en/executive-insights/"
+        verified_date: "2026-07-23"
+        type: "market_research"
+        extract: "12 key players... shaping Europe's €3.8B interim executive market"
+
+  - claim: "North America commands 43.7% of global fractional market value at $4.1B"
+    grade: "E"
+    sources:
+      - url: "https://www.vendux.org/blog/10-numbers-that-will-reshape-how-you-think-about-fractional-executives-in-2026"
+        verified_date: "2026-07-23"
+        type: "industry_blog"
+        extract: "North America commands 43.7% of global market value, at $4.1 billion in 2025"
+
+  - claim: "GoFractional charges 20% ongoing markup on executive rates"
+    grade: "E"
+    sources:
+      - url: "https://5ftview.com/articles/not-all-fractional-networks-are-built-the-same-a-2026-comparison/"
+        verified_date: "2026-07-23"
+        type: "comparison_article"
+        extract: "Go Fractional is free to join. But that 20% ongoing markup compounds quickly"
+
+  - claim: "5FT View operates on 90/10 to 75/25 revenue share in favor of the fractional"
+    grade: "E"
+    sources:
+      - url: "https://5ftview.com/articles/not-all-fractional-networks-are-built-the-same-a-2026-comparison/"
+        verified_date: "2026-07-23"
+        type: "comparison_article"
+        extract: "5FT View operates on a transparent revenue share model... ranging from 90/10 to 75/25 in favor of the fractional"
+
+  - claim: "Fractional CFO TAM in US exceeds $3.2B in 2026, projected $6.4B by 2028"
+    grade: "E"
+    sources:
+      - url: "https://www.vendux.org/blog/10-numbers-that-will-reshape-how-you-think-about-fractional-executives-in-2026"
+        verified_date: "2026-07-23"
+        type: "industry_blog"
+        extract: "The fractional CFO U.S. TAM exceeds $3.2 billion in 2026, projected to double to $6.4 billion by 2028"
+
+  - claim: "Fractional CMO market reached $1.27B in 2026, projected $2.68B by 2031"
+    grade: "E"
+    sources:
+      - url: "https://www.vendux.org/blog/10-numbers-that-will-reshape-how-you-think-about-fractional-executives-in-2026"
+        verified_date: "2026-07-23"
+        type: "industry_blog"
+        extract: "the fractional CMO market reached $1.27B in 2026 (projected $2.68B by 2031)"
+
+  - claim: "Fractional sales leaders grew 80% from 5,000 to 9,000 between 2020-2024"
+    grade: "E"
+    sources:
+      - url: "https://www.vendux.org/blog/10-numbers-that-will-reshape-how-you-think-about-fractional-executives-in-2026"
+        verified_date: "2026-07-23"
+        type: "industry_blog"
+        extract: "Fractional sales leaders in the U.S. and Canada grew from 5,000 in 2020 to 9,000 in 2024 — an 80% increase"
+
+  - claim: "Global fractional executive market exceeded $25-30B in 2026 with US accounting for $10-12B"
+    grade: "E"
+    sources:
+      - url: "https://www.jrgpartners.com/interim-executive-statistics-2026-growth-fractional-leadership-us/"
+        verified_date: "2026-07-23"
+        type: "market_analysis"
+        extract: "The global interim and fractional executive market is estimated to exceed $25–30 billion in 2026, with the US accounting for roughly $10–12 billion"
+
+  - claim: "Chief Outsiders has served 2000+ clients with 75 NPS and 100+ fractional executives"
+    grade: "E"
+    sources:
+      - url: "https://www.chiefoutsiders.com/"
+        verified_date: "2026-07-23"
+        type: "company_website"
+        extract: "2000+ Clients, 300+ PE Firms, 75 NPS Score"
+
+categories:
+  market_size:
+    - "Global fractional executive market grew from $5.7B (2024) to $9.4B (2025)"
+    - "Fractional executive market projected to reach $24.7B by 2034 at 11.3% CAGR"
+    - "US market for fractional executive services projected to reach $15B by 2026"
+    - "European interim management market valued at EUR 3.8B"
+    - "Fractional CFO TAM in US exceeds $3.2B in 2026"
+    - "Global fractional executive market exceeded $25-30B in 2026"
+
+  adoption:
+    - "Mid-market companies show highest adoption of fractional executives at 42%"
+    - "Gartner: 30%+ of midsize enterprises will have at least one fractional executive on retainer by 2027"
+    - "UK fractional jobs grew 340% since 2019; 78% of UK scale-ups have used fractional executives"
+    - "Fractional executives have captured 23% of the traditional interim management market"
+    - "North America commands 43.7% of global fractional market value"
+
+  pricing:
+    - "Fractional CFO pricing ranges EUR 4K-10K/month"
+    - "Fractional COO pricing ranges EUR 4K-12K/month"
+    - "Fractional CMO pricing ranges EUR 5K-10K/month"
+    - "Fractional CTO pricing ranges EUR 6K-15K/month"
+    - "US daily rates for fractional C-suite: $2,500-$5,000+/day"
+    - "European daily rates for fractional executives: EUR 600-2,000+/day"
+    - "Fractional model saves 50-60% vs full-time executive hire"
+
+  competitors:
+    - "GoFractional charges 20% ongoing markup on executive rates"
+    - "5FT View operates on 90/10 to 75/25 revenue share"
+    - "Chief Outsiders has served 2000+ clients with 100+ executives"
+
+  performance:
+    - "Fractional CMO users achieve 29% average revenue growth vs 19% without"
+    - "Fractional sales leaders grew 80% from 5,000 to 9,000 (2020-2024)"
+
+methodology_notes:
+  niche_type: "data-sparse"
+  key_challenges:
+    - "All major platforms have opaque pricing (no public pricing pages)"
+    - "No third-party review corpus exists for fractional agencies as service buyers"
+    - "Churn rates for fractional agency client portfolios are not publicly benchmarked"
+    - "Many claims in this canvas are [H] with explicit inference chains from adjacent markets"
+  data_type_mismatch: true
+  grade_budget:
+    - "E: ~30 claims (market reports, pricing guides, rate benchmarks)"
+    - "H: ~40 claims (economic estimates, behavioral inferences, future projections)"
+    - "S: ~15 claims (scenarios, untested hypotheses, speculative projections)"
+    - "P: ~15 claims (definitions, boundaries, observable facts)"

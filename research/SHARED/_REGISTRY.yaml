@@ -1,22 +1,17 @@
-# SHARED/_REGISTRY.yaml — Master index of all cross-niche shared data
-# Read by every niche agent BEFORE fetching any data (§7.2 Discovery Protocol)
-# Updated by every niche agent AFTER completing evaluation
+# SHARED/_REGISTRY.yaml — Index of all shared data files across niches
 #
-# Bootstrap protocol (first 5 niches): registry will be sparse.
-# Bootstrap fetches count against the initiating niche's budget.
-# After niche 5, >=60% of common cross-niche data should exist here.
+# Created: 2026-07-23 (Workstream C, SRE-M07 fix)
+# Bootstrap: populated during first 5 niches.
+# After niche 5, the registry should cover ~60% of common cross-niche data.
+# Bootstrap health check runs at niche 5: if registry >50% empty, escalate.
 
-last_updated: "2026-07-23"
-entries:
-  competitors: {}
-    # Example entry:
-    # syncgtm:
-    #   profile_file: "SHARED/competitors/syncgtm-v1.yaml"
-    #   first_profiled_by: "N-003"
-    #   fetch_date: "2026-07-23"
-    #   fresh_until: "2026-10-21"
-    #   niches_relevant: ["N-003", "N-007"]
-  benchmarks: {}
-  triggers: {}
-  regulatory: {}
-  buyer_language: {}
+schema_version: 1.0
+last_updated: '2026-07-23'
+niche_count_at_last_update: 0
+
+competitor_profiles: []     # {competitor_id, name, niche_id, file_path, fetch_date, fresh_until}
+benchmarks: []              # {benchmark_id, metric, niche_id, file_path, fetch_date}
+trigger_registries: []      # {trigger_id, name, niche_id, file_path, fetch_date}
+shared_tools: []            # {tool_name, capability, file_path}
+regulatory_items: []        # {regulation_id, name, file_path}
+taxonomy_entries: []        # {category, niche_type, file_path}

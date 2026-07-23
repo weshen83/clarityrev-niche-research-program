@@ -1,0 +1,16 @@
+# requirements.txt — ClarityRev Niche Pipeline pinned Python dependencies
+#
+# Created: 2026-07-23 (Workstream C, SRE-H10 fix)
+# Pin ALL production deps to specific versions to avoid silent breakage
+# from pip install --upgrade (which could break ruamel.yaml YAML parsing,
+# certifi SSL, or other critical deps).
+#
+# Install: pip install -r requirements.txt
+# Verify:  python3 -c "import ruamel.yaml; import json; import yaml; import requests; print('ALL OK')"
+
+ruamel.yaml==0.18.6          # YAML with comment preservation (critical for governance files)
+pyyaml==6.0.2                # Safe YAML parsing (fallback loader, security validation)
+requests==2.32.3             # HTTP client for tool health checks, API calls
+urllib3==2.2.2               # HTTP connection pooling (requests dependency)
+certifi==2024.7.4            # SSL certificate bundle
+jsonschema==4.23.0           # Schema validation for structured data files

@@ -513,7 +513,7 @@ def check_credits(data_type: str) -> dict:
                  " Has Phase 0 been run? Expected at:"
                  f" {budget_path}")
         emit_result(ExitCode.INTERNAL_ERROR, {
-            "error": "CREDIT_BUDGET.yaml not found. Has Phase 0 been run?",
+            "error": "CREDIT_BUDGET.yaml not found. Phase 0 calibration has NOT been run. Run Phase 0 before any niche evaluation.",
             "file": repo_relative_path(budget_path),
         })
 
@@ -780,6 +780,285 @@ def _extract_target_url(args: list) -> tuple:
 
 # ── Main ───────────────────────────────────────────────────────────────────────
 
+
+
+# ── Gate Functions: Tool Health Checks (SRE-C08, SRE-C06, SRE-H09, SRE-H10) ─────
+
+def check_disk_space() -> dict:
+    """Check available disk space. BLOCKED if <100MB, WARNING if 100-500MB."""
+    import os as _os
+    try:
+        st = _os.statvfs(RESEARCH_DIR if RESEARCH_DIR.exists() else Path.cwd())
+        free_mb = (st.f_frsize * st.f_bavail) / (1024 * 1024)
+    except (OSError, AttributeError) as e:
+        return {"disk_check": "SKIPPED", "free_mb": None, "disk_warnings": [str(e)]}
+    if free_mb < 100:
+        return {"disk_check": "BLOCKED", "free_mb": round(free_mb, 1),
+                "disk_warnings": [f"Only {free_mb:.0f} MB free. Free up disk space."]}
+    elif free_mb < 500:
+        return {"disk_check": "WARNING", "free_mb": round(free_mb, 1),
+                "disk_warnings": [f"Only {free_mb:.0f} MB free. Clean up."]}
+    return {"disk_check": "PASS", "free_mb": round(free_mb, 1)}
+
+
+def check_python_deps() -> dict:
+    """Check required Python deps can be imported."""
+    import importlib.util
+    missing = []
+    for dep in ["ruamel.yaml", "yaml", "requests", "json", "os", "subprocess"]:
+        spec = importlib.util.find_spec(dep.replace("-", "_").replace(".", ""))
+        if spec is None:
+            missing.append(dep)
+    if missing:
+        return {"deps_check": "BLOCKED", "missing_deps": missing,
+                "deps_warnings": [f"Missing: {', '.join(missing)}. Install: pip install -r requirements.txt"]}
+    return {"deps_check": "PASS", "missing_deps": []}
+
+
+def ping_firecrawl() -> dict:
+    """Check Firecrawl CLI connectivity (1-2 credits)."""
+    import subprocess as _sp
+    try:
+        r = _sp.run(["firecrawl", "--version"], capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            return {"firecrawl_check": "WARNING", "firecrawl_version": None,
+                    "firecrawl_warnings": ["CLI not responding."]}
+        ver = r.stdout.strip() or r.stderr.strip() or "unknown"
+    except FileNotFoundError:
+        return {"firecrawl_check": "BLOCKED", "firecrawl_version": None,
+                "firecrawl_warnings": ["CLI not found. Install from docs.firecrawl.dev."]}
+    except _sp.TimeoutExpired:
+        return {"firecrawl_check": "WARNING", "firecrawl_version": None,
+                "firecrawl_warnings": ["--version timed out."]}
+    try:
+        sr = _sp.run(["firecrawl", "search", "sanity", "--limit", "1"],
+                     capture_output=True, text=True, timeout=30)
+        if sr.returncode != 0:
+            return {"firecrawl_check": "WARNING", "firecrawl_version": ver,
+                    "firecrawl_warnings": [f"Search failed: {sr.stderr.strip()[:200]}"]}
+        return {"firecrawl_check": "PASS", "firecrawl_version": ver}
+    except _sp.TimeoutExpired:
+        return {"firecrawl_check": "WARNING", "firecrawl_version": ver,
+                "firecrawl_warnings": ["Search timed out (>30s)."]}
+
+
+def ping_mcp_servers() -> dict:
+    """Check essential MCP configs in settings.json."""
+    sp = Path.home() / ".claude" / "settings.json"
+    if not sp.exists():
+        return {"mcp_check": "WARNING", "mcp_warnings": ["settings.json not found."]}
+    try:
+        raw = load_yaml_safe(sp) or {}
+    except (ValueError, OSError):
+        raw = {}
+    mcfg = raw.get("mcpServers", raw.get("mcp_servers", {}))
+    expected = ["reddit-research", "open-registry", "context7"]
+    found = [s for s in expected if s in mcfg]
+    missing = [s for s in expected if s not in mcfg]
+    if missing:
+        return {"mcp_check": "WARNING", "found_servers": found, "missing_servers": missing,
+                "mcp_warnings": [f"Not configured: {', '.join(missing)}. Optional."]}
+    return {"mcp_check": "PASS", "found_servers": found}
+
+
+def check_concurrency_lock() -> dict:
+    """Check _CONCURRENCY_LOCK.yaml exists for agent coordination."""
+    lock_path = PROGRAM_DIR / "_CONCURRENCY_LOCK.yaml"
+    if not lock_path.exists():
+        return {"concurrency_lock_check": "WARNING",
+                "concurrency_lock_warnings": ["_CONCURRENCY_LOCK.yaml not found. Agent concurrency limits are not enforced."]}
+    try:
+        data = load_yaml_safe(lock_path)
+        if not isinstance(data, dict):
+            return {"concurrency_lock_check": "WARNING",
+                    "concurrency_lock_warnings": ["_CONCURRENCY_LOCK.yaml is not a valid dict."]}
+        sv = data.get("schema_version")
+        if not sv:
+            return {"concurrency_lock_check": "WARNING",
+                    "concurrency_lock_warnings": ["_CONCURRENCY_LOCK.yaml missing schema_version."]}
+        return {"concurrency_lock_check": "PASS", "schema_version": sv}
+    except (ValueError, OSError) as e:
+        return {"concurrency_lock_check": "WARNING",
+                "concurrency_lock_warnings": [f"_CONCURRENCY_LOCK.yaml error: {e}"]}
+
+
+def check_mcp_schedule() -> dict:
+    """Check MCP_SCHEDULE.yaml exists for rate-limit coordination."""
+    sched_path = PROGRAM_DIR / "MCP_SCHEDULE.yaml"
+    if not sched_path.exists():
+        return {"mcp_schedule_check": "WARNING",
+                "mcp_schedule_warnings": ["MCP_SCHEDULE.yaml not found. MCP rate limits are not configured."]}
+    try:
+        data = load_yaml_safe(sched_path)
+        if not isinstance(data, dict):
+            return {"mcp_schedule_check": "WARNING",
+                    "mcp_schedule_warnings": ["MCP_SCHEDULE.yaml is not a valid dict."]}
+        servers = data.get("mcp_servers", {})
+        if not isinstance(servers, dict) or len(servers) == 0:
+            return {"mcp_schedule_check": "WARNING",
+                    "mcp_schedule_warnings": ["MCP_SCHEDULE.yaml has no mcp_servers configured."]}
+        return {"mcp_schedule_check": "PASS", "mcp_server_count": len(servers)}
+    except (ValueError, OSError) as e:
+        return {"mcp_schedule_check": "WARNING",
+                "mcp_schedule_warnings": [f"MCP_SCHEDULE.yaml error: {e}"]}
+
+
+def dead_host_write(niche_id: str, hostname: str, error_code: str) -> None:
+    """Write to DEAD_HOST_REGISTRY after 3 consecutive failures (SRE-C06)."""
+    rp = find_dead_host_registry()
+    try:
+        reg = load_yaml_safe(rp)
+        if not isinstance(reg, dict) or "blocked_hosts" not in reg:
+            reg = {"blocked_hosts": []}
+        if not isinstance(reg["blocked_hosts"], list):
+            reg["blocked_hosts"] = []
+    except (ValueError, OSError):
+        reg = {"blocked_hosts": []}
+    bh = reg["blocked_hosts"]
+    existing = None
+    for e in bh:
+        if isinstance(e, dict) and e.get("host", "").lower() == hostname.lower():
+            existing = e
+            break
+    if existing:
+        existing["failure_count"] = existing.get("failure_count", 0) + 1
+        existing["last_failure"] = now_utc().isoformat()
+        existing["last_error"] = error_code
+        existing["last_niche"] = niche_id
+        if existing["failure_count"] >= 3:
+            existing["blocked"] = True
+            existing["blocked_at"] = now_utc().isoformat()
+    else:
+        bh.append({"host": hostname.lower(), "failure_count": 1,
+                   "first_failure": now_utc().isoformat(),
+                   "last_failure": now_utc().isoformat(),
+                   "last_error": error_code, "last_niche": niche_id, "blocked": False})
+    try:
+        write_yaml_atomic(reg, rp)
+    except ValueError as e:
+        emit_log("ERROR", f"Failed to write DEAD_HOST_REGISTRY: {e}")
+
+
+def ping_dataforseo() -> dict:
+    """Check DataForSEO API connectivity (WARNING on fail, not BLOCKED)."""
+    import os as _os, requests as _req
+    l, p = _os.environ.get("DATAFORSEO_LOGIN"), _os.environ.get("DATAFORSEO_PASSWORD")
+    if not l or not p:
+        return {"dataforseo_check": "SKIPPED", "dataforseo_warnings": ["Creds not set."]}
+    try:
+        r = _req.post("https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
+                       auth=(l, p), timeout=(5, 30),
+                       json=[{"keyword": "sanity check", "language_code": "en", "location_code": 2840}])
+        if r.status_code == 200:
+            bal = r.json().get("summary", {}).get("balance")
+            return {"dataforseo_check": "PASS", "dataforseo_balance": bal}
+        elif r.status_code == 402:
+            return {"dataforseo_check": "WARNING", "dataforseo_balance": 0.0,
+                    "dataforseo_warnings": ["Balance EXHAUSTED (HTTP 402)."]}
+        return {"dataforseo_check": "WARNING",
+                "dataforseo_warnings": [f"HTTP {r.status_code}."]}
+    except _req.exceptions.Timeout:
+        return {"dataforseo_check": "WARNING", "dataforseo_warnings": ["Timed out."]}
+    except _req.exceptions.ConnectionError as e:
+        return {"dataforseo_check": "WARNING", "dataforseo_warnings": [f"Unreachable: {e}"]}
+
+
+def check_firecrawl_credit_usage() -> dict:
+    """Run firecrawl credit-usage for API-reported balance (SRE-L05)."""
+    import subprocess as _sp, json as _json
+    try:
+        r = _sp.run(["firecrawl", "credit-usage"], capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            return {"credit_usage_check": "WARNING", "api_balance": None,
+                    "credit_usage_warnings": ["Command failed."]}
+        bal = "unknown"
+        out = r.stdout.strip()
+        if out:
+            try:
+                parsed = _json.loads(out)
+                bal = parsed.get("remaining", parsed.get("credits", "unknown"))
+            except (_json.JSONDecodeError, AttributeError):
+                for line in out.splitlines():
+                    if "remaining" in line.lower():
+                        for p in line.split():
+                            try:
+                                bal = int(p)
+                                break
+                            except ValueError:
+                                continue
+        return {"credit_usage_check": "PASS" if bal != "unknown" else "WARNING", "api_balance": bal}
+    except FileNotFoundError:
+        return {"credit_usage_check": "WARNING", "api_balance": None,
+                "credit_usage_warnings": ["CLI not found."]}
+    except _sp.TimeoutExpired:
+        return {"credit_usage_check": "WARNING", "api_balance": None,
+                "credit_usage_warnings": ["Timed out."]}
+
+
+def check_dataforseo_balance() -> dict:
+    """Per-call DFS balance check (SRE-HB2)."""
+    import os as _os, requests as _req
+    l, p = _os.environ.get("DATAFORSEO_LOGIN"), _os.environ.get("DATAFORSEO_PASSWORD")
+    if not l or not p:
+        return {"dfs_balance_check": "SKIPPED", "dfs_balance": None}
+    try:
+        r = _req.get("https://api.dataforseo.com/v3/dataforseo/account",
+                     auth=(l, p), timeout=(5, 15))
+        if r.status_code == 200:
+            bal = r.json().get("summary", {}).get("balance", 0.0)
+            if bal <= 0:
+                return {"dfs_balance_check": "BLOCKED", "dfs_balance": bal,
+                        "dfs_balance_warnings": ["Balance /bin/bash. Top up."]}
+            return {"dfs_balance_check": "PASS", "dfs_balance": bal}
+        elif r.status_code == 402:
+            return {"dfs_balance_check": "BLOCKED", "dfs_balance": 0.0,
+                    "dfs_balance_warnings": ["Balance exhausted (402)."]}
+        return {"dfs_balance_check": "WARNING", "dfs_balance": None,
+                "dfs_balance_warnings": [f"HTTP {r.status_code}."]}
+    except _req.exceptions.RequestException as e:
+        return {"dfs_balance_check": "WARNING", "dfs_balance": None,
+                "dfs_balance_warnings": [f"Failed: {e}"]}
+
+
+def self_check() -> None:
+    """Run all GATE health checks via --self-check."""
+    emit_log("INFO", "=" * 60)
+    emit_log("INFO", "PREFLIGHT SELF-CHECK: Running all GATE health checks")
+    emit_log("INFO", "=" * 60)
+    results = {}
+    max_s = 0
+    checks = [
+        ("python_deps", check_python_deps, "deps_check"),
+        ("disk_space", check_disk_space, "disk_check"),
+        ("firecrawl_health", ping_firecrawl, "firecrawl_check"),
+        ("dataforseo_health", ping_dataforseo, "dataforseo_check"),
+        ("mcp_servers", ping_mcp_servers, "mcp_check"),
+        ("concurrency_lock", check_concurrency_lock, "concurrency_lock_check"),
+        ("mcp_schedule", check_mcp_schedule, "mcp_schedule_check"),
+        ("firecrawl_credits", check_firecrawl_credit_usage, "credit_usage_check"),
+        ("dataforseo_balance", check_dataforseo_balance, "dfs_balance_check"),
+    ]
+    for name, fn, key in checks:
+        emit_log("INFO", f"[Check] {name}...")
+        r = fn()
+        results[name] = r
+        s = r.get(key, "UNKNOWN")
+        if s == "BLOCKED":
+            max_s = max(max_s, 1)
+        elif s == "WARNING":
+            max_s = max(max_s, 2)
+    if max_s >= 1:
+        ec, vl = ExitCode.BLOCKED, "BLOCKED"
+    elif max_s == 2:
+        ec, vl = ExitCode.WARNING, "WARNING"
+    else:
+        ec, vl = ExitCode.SUCCESS, "PASS"
+    emit_log("INFO", "=" * 60)
+    emit_log("INFO", f"SELF-CHECK VERDICT: {vl} (exit {ec.value})")
+    emit_log("INFO", "=" * 60)
+    emit_result(ec, {"verdict": f"SELF_CHECK_{vl}", "self_check": results})
+
+
 def main() -> None:
     """Entry point. Parse args, run checks, emit verdict."""
     args = sys.argv[1:]
@@ -787,6 +1066,14 @@ def main() -> None:
     # ── Handle --help ──────────────────────────────────────────────────────
     if "--help" in args or "-h" in args:
         print_help()
+    # ── Handle --self-check ───────────────────────────────────────────
+    if "--self-check" in args:
+        self_check()
+
+    # ── Extract --force ────────────────────────────────────────────────────
+    force_flag = "--force" in args
+    if force_flag:
+        args.remove("--force")
 
     # ── Extract --dry-run ──────────────────────────────────────────────────
     dry_run = "--dry-run" in args
@@ -820,13 +1107,13 @@ def main() -> None:
     if len(args) < 2:
         emit_log("ERROR",
                  f"Usage: {SCRIPT_NAME} NICHE_ID DATA_TYPE"
-                 " [--target-url URL] [--dry-run]")
+                 " [--target-url URL] [--force] [--dry-run]")
         emit_result(ExitCode.INVALID_INPUT, {
             "error":
                 f"Expected at least 2 positional arguments, got {len(args)}.",
             "usage":
                 f"{SCRIPT_NAME} NICHE_ID DATA_TYPE"
-                " [--target-url URL] [--dry-run]",
+                " [--target-url URL] [--force] [--dry-run]",
         })
 
     niche_id = args[0]
@@ -836,6 +1123,12 @@ def main() -> None:
     # Step 1: Input Validation
     # ==========================================================================
     validate_inputs(niche_id, data_type, target_url)
+
+    # ==========================================================================
+    # Step 1b: Governance File Checks (SRE-C07, SRE-M05)
+    # ==========================================================================
+    concurrency_result = check_concurrency_lock()
+    mcp_result = check_mcp_schedule()
 
     # ==========================================================================
     # Step 2: Cache Check
@@ -854,6 +1147,8 @@ def main() -> None:
             "cache_status": "HIT",
             "credit_check": "SKIPPED",
             "dead_host_check": "SKIPPED",
+            "concurrency_check": concurrency_result["concurrency_lock_check"],
+            "mcp_schedule_check": mcp_result["mcp_schedule_check"],
             "niche_id": niche_id,
             "data_type": data_type,
             "estimated_credits":
@@ -867,8 +1162,8 @@ def main() -> None:
     # ==========================================================================
     credit_result = check_credits(data_type)
 
-    # Credits BLOCKED -> early exit (exit 1)
-    if credit_result.get("credit_check") == "BLOCKED":
+    # Credits BLOCKED -> early exit (exit 1), unless --force
+    if credit_result.get("credit_check") == "BLOCKED" and not force_flag:
         for w in credit_result.get("credit_warnings", []):
             emit_log("WARNING", w)
         emit_log("ERROR",
@@ -879,6 +1174,8 @@ def main() -> None:
             "cache_status": cache_status,
             "credit_check": "BLOCKED",
             "dead_host_check": "SKIPPED",
+            "concurrency_check": concurrency_result["concurrency_lock_check"],
+            "mcp_schedule_check": mcp_result["mcp_schedule_check"],
             "niche_id": niche_id,
             "data_type": data_type,
             "estimated_credits": credit_result["estimated_credits"],
@@ -890,14 +1187,19 @@ def main() -> None:
                 " or choose a lower-cost data type.",
         }
         emit_result(ExitCode.BLOCKED, result_data)
+    elif credit_result.get("credit_check") == "BLOCKED" and force_flag:
+        # --force: downgrade BLOCKED to WARNING
+        emit_log("WARNING",
+                 "CREDITS BLOCKED but --force set. Proceeding with WARNING.")
+        credit_result["credit_check"] = "WARNING"
 
     # ==========================================================================
     # Step 4: Dead-Host Registry Check
     # ==========================================================================
     dead_host_result = check_dead_host(target_url)
 
-    # Dead host BLOCKED -> early exit (exit 1)
-    if dead_host_result.get("dead_host_check") == "BLOCKED":
+    # Dead host BLOCKED -> early exit (exit 1), unless --force
+    if dead_host_result.get("dead_host_check") == "BLOCKED" and not force_flag:
         emit_log("ERROR",
                  "VERDICT: BLOCKED_DEAD_HOST --"
                  f" {dead_host_result.get('dead_host_note', 'Target host is dead')}")
@@ -906,6 +1208,8 @@ def main() -> None:
             "cache_status": cache_status,
             "credit_check": credit_result.get("credit_check", "UNKNOWN"),
             "dead_host_check": "BLOCKED",
+            "concurrency_check": concurrency_result["concurrency_lock_check"],
+            "mcp_schedule_check": mcp_result["mcp_schedule_check"],
             "niche_id": niche_id,
             "data_type": data_type,
             "estimated_credits": credit_result["estimated_credits"],
@@ -917,6 +1221,11 @@ def main() -> None:
                 " from DEAD_HOST_REGISTRY.yaml.",
         }
         emit_result(ExitCode.BLOCKED, result_data)
+    elif dead_host_result.get("dead_host_check") == "BLOCKED" and force_flag:
+        # --force: downgrade BLOCKED to WARNING
+        emit_log("WARNING",
+                 "DEAD HOST BLOCKED but --force set. Proceeding with WARNING.")
+        dead_host_result["dead_host_check"] = "WARNING"
 
     # ==========================================================================
     # Step 5: Verdict Assembly
@@ -930,6 +1239,16 @@ def main() -> None:
         dh_note = dead_host_result.get("dead_host_note", "")
         if dh_note:
             warnings.append(dh_note)
+    # Concurrency lock and MCP schedule are logged but do NOT change exit code
+    # in the main fetch flow (they are governance checks, not pipeline checks).
+    # Use --self-check for a comprehensive system health audit.
+    if concurrency_result.get("concurrency_lock_check") == "WARNING":
+        emit_log("INFO", f"  Concurrency lock: {concurrency_result['concurrency_lock_check']} (not blocking)")
+    if mcp_result.get("mcp_schedule_check") == "WARNING":
+        emit_log("INFO", f"  MCP schedule: {mcp_result['mcp_schedule_check']} (not blocking)")
+
+    if force_flag:
+        warnings.append("--force flag active: blocking checks overridden")
 
     if warnings:
         exit_code = ExitCode.WARNING
@@ -954,6 +1273,12 @@ def main() -> None:
     emit_log("INFO",
              f"  Dead-host: {dh_status}"
              + (f" ({dh_note})" if dh_note else ""))
+    conc_status = concurrency_result.get("concurrency_lock_check", "SKIPPED")
+    emit_log("INFO",
+             f"  Concurrency lock: {conc_status}")
+    mcp_status = mcp_result.get("mcp_schedule_check", "SKIPPED")
+    emit_log("INFO",
+             f"  MCP schedule: {mcp_status}")
 
     # Build result JSON
     result_data = {
@@ -961,11 +1286,16 @@ def main() -> None:
         "cache_status": cache_status,
         "credit_check": credit_result.get("credit_check", "UNKNOWN"),
         "dead_host_check": dead_host_result.get("dead_host_check", "SKIPPED"),
+        "concurrency_check": concurrency_result["concurrency_lock_check"],
+        "mcp_schedule_check": mcp_result["mcp_schedule_check"],
         "niche_id": niche_id,
         "data_type": data_type,
         "estimated_credits": credit_result["estimated_credits"],
         "credits_remaining": credit_result["credits_remaining"],
     }
+
+    if force_flag:
+        result_data["force_used"] = True
 
     if warnings:
         result_data["warnings"] = warnings
@@ -974,6 +1304,8 @@ def main() -> None:
         result_data["cache_details"] = cache_result
         result_data["credit_details"] = credit_result
         result_data["dead_host_details"] = dead_host_result
+        result_data["concurrency_details"] = concurrency_result
+        result_data["mcp_schedule_details"] = mcp_result
         emit_log("INFO",
                  "DRY RUN: No state was mutated. Above is what would happen.")
 

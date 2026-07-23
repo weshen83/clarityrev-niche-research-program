@@ -10,4 +10,8 @@
 #   retry_count: number of retries attempted
 #   notes: optional
 
+# Pipeline availability tracking (SRE-M09): set at pipeline start, updated on each failure
+pipeline_start_timestamp: null
+pipeline_last_failure_timestamp: null
+
 errors: []

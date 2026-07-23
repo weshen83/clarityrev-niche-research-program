@@ -43,7 +43,7 @@ This is the binding data operations specification for ClarityRev's 25-niche eval
 | Phase 0 calibration budget | $0.50 (one-time) |
 | Wall-clock per niche (network I/O only) | ~13-16 minutes estimated |
 | Canvas authoring (LLM gen + trace-map) | ~5-8 minutes additional |
-| Total wall-clock per niche | ~20-25 minutes estimated (p95 not measured) |
+| Total wall-clock per niche | ~20-25 minutes estimated (p95 NOT MEASURED — this is design fiction, not empirical data. Run calibration niche to measure actual timings. Hard limit is 45 min as a safety constraint, not a performance target.) |
 | Per-niche hard timeout | 45 minutes |
 | Concurrent niches | Max 4 (per G-026 concurrency findings) |
 | Firecrawl concurrent requests | 50 (standard plan) |
@@ -72,7 +72,7 @@ Every tool in this inventory has been verified for: exact free tier limits, suff
 
 | Tool | Capacity | Cost per Unit | Best For | Sufficiency for 25 Niches |
 |---|---|---|---|---|
-| **Firecrawl** /search (new relevance model) | 100K credits, 50 concurrent | 2 credits/search, 1-2/scrape, 1/crawl page | JS-rendered pages, structured extraction, crawling, monitoring, query-relevant excerpts (94.7% SimpleQA accuracy, 10x fewer tokens) | SUFFICIENT — 12% budget used |
+| **Firecrawl** /search (new relevance model) | 100K credits, 50 concurrent scrapes, 50 crawl starts/min | 2 credits/search, 1-2/scrape, 1/crawl page | JS-rendered pages, structured extraction, crawling, monitoring, query-relevant excerpts (94.7% SimpleQA accuracy, 10x fewer tokens) | SUFFICIENT — 12% budget used |
 | **Firecrawl** /scrape | Same pool | 1-2 credits/page | Single-page extraction, pricing pages, about pages | SUFFICIENT |
 | **Firecrawl** /crawl | Same pool | 1 credit/page | Bulk review extraction, docs sites, competitor site mapping | SUFFICIENT |
 | **Firecrawl** /map | Same pool | 1 credit | URL discovery before crawling — saves 80% of crawl credits | SUFFICIENT |
@@ -84,14 +84,15 @@ Every tool in this inventory has been verified for: exact free tier limits, suff
 | **DataForSEO** Backlinks API | Same pool | ~$0.012/task | Backlink profiles, competitor link intersection | SUFFICIENT |
 | **DataForSEO** Business Data API | Same pool | ~$0.012/task | Business reviews (Google Maps, Trustpilot), business listings | SUFFICIENT |
 | **DataForSEO** OnPage API | Same pool | **Free** (content parsing) | Extract contacts, meta, headings from any URL | SUFFICIENT — free |
+| **DataForSEO** Google Ads Live API | Same pool, 12 req/min limit | ~$0.012/task | Google Ads keyword data — use standard queue, NOT live | SUFFICIENT — but 12/min limit means batch operations only |
 
 #### Tier 2 — Free MCP Servers (Use First)
 
 | MCP Server | Capacity | Best For |
 |---|---|---|
-| **Brave Search MCP** | Unlimited (self-hosted) | General web search without API costs |
-| **Reddit Research MCP** | Free, no auth, 20K+ subreddits | B2B VOC, pain point discovery, community sentiment |
-| **OpenRegistry MCP** | 30 req/min, 30 national registries | European company registry data — NL KVK, BE KBO, UK CH, DE Handelsregister, CH ZEFIX, +25 more |
+| **Brave Search MCP** | 2,000 queries/month free (API key required — NOT self-hosted; self-hosted option is SearXNG) | General web search without API costs |
+| **Reddit Research MCP** | 10 req/min (anonymous — limit to 2 concurrent calls per agent), 100 req/min (OAuth), 20K+ subreddits | B2B VOC, pain point discovery, community sentiment |
+| **OpenRegistry MCP** | 3 countries/60s (free tier — NOT 30 req/min as previously documented); 5 req/min per agent throttle | European company registry data — NL KVK, BE KBO, UK CH, DE Handelsregister, CH ZEFIX, +25 more |
 | **Financial Hub MCP** | Unlimited, no key | SEC EDGAR — 10-K, 10-Q, 8-K, corporate events |
 | **paperplain-mcp** | Unlimited, no key | 200M+ peer-reviewed papers — market research, academic validation |
 | **Jina AI MCP** | 10M tokens free | Web + academic search, reader mode |
@@ -100,30 +101,37 @@ Every tool in this inventory has been verified for: exact free tier limits, suff
 | **FetchSERP MCP** | 250 free credits | Domain analysis, WHOIS, DNS, tech stack |
 | **Context7 MCP** | Unlimited | Official docs lookup — verify API capabilities before committing to workflow designs |
 | **SEC EDGAR MCP** | Unlimited, public data | US public company financials |
-| **Serper MCP** | 2,500 free queries (one-time) | Initial deep research SERP data |
+| **Serper MCP** | 2,500 free queries/month (recurring — NOT one-time, monthly reset) | Initial deep research SERP data |
 | **TAM-MCP-Server** | Unlimited, open source | Market sizing from 8 government sources |
 | **Google CSE MCP** | 100 searches/day | Google-specific search results |
+
+> **SKIP Decisions for Tier 2:**
+> - **Firecrawl MCP** (`firecrawl-mcp`, mendableai, v1.10.0): SKIP — CLI is superior for this pipeline. MCP is missing 7 critical CLI commands: `interact`, `monitor`, `download`, `parse`, `agent`, `search-feedback`, `credit-usage`. CLI is the primary integration; no MCP config added.
+> - **SEC EDGAR MCP** (standalone): SKIP — Financial Hub MCP already covers SEC EDGAR with 16 tools (`compare_companies`, `analyze_financials`, `search_filings`, etc.). Adding a standalone SEC EDGAR MCP would duplicate functionality.
+> - **@cdilorenzo/mcp-dataforseo** (community): SKIP — official `dataforseo-mcp-server` (DataForSEO org, v2.9.11, Apache-2.0) is better maintained and covers all 9 API categories used by this pipeline.
+
+> **Reddit Research: Hosted SSE endpoint:** `https://reddit-research-mcp.fastmcp.app/mcp` (zero config, zero auth, 10 operations across Reddit + Feeds categories). Falls back to `reddit-intelligence-agent-mcp` for pain point detection and opportunity scoring.
 
 #### Tier 3 — Free APIs (Use First, Verify Limits)
 
 | API | Free Tier | Best For | Sufficiency for 25 Niches |
 |---|---|---|---|
 | **HubSpot API** | 250,000 req/day | CRM-native signal delivery platform | SUFFICIENT |
-| **Registry Lookup** | 5,000 calls/mo, 521M entities | Global company registry data | SUFFICIENT |
-| **GDELT Project** | Free (BigQuery limits at scale), 100K+ outlets, 65 languages | News monitoring, intent signals | SUFFICIENT |
+| **Registry Lookup** | 5,000 calls/mo, 521M entities | Global company registry data | NOT CONFIGURED — no API key set up. Accept OpenRegistry-only for company registry fallback until key is provisioned. |
+| **GDELT Project** | Free (BigQuery limits at scale), 100K+ outlets, 65 languages | News monitoring, intent signals | SUFFICIENT — ALL calls MUST use exponential backoff + 3 retries (1s/2s/4s + jitter). GDELT has NO SLA; rate limits are unbounded. Never pass empty data — mark SOURCE_UNAVAILABLE after 3 failed retries. |
 | **EUROSTAT API** | 30 req/min, no auth | EU industry statistics by NACE code | SUFFICIENT |
-| **OECD API** | Unlimited, no auth | 38-country macro/industry data | SUFFICIENT |
-| **TED API** | Unlimited, no key | EU government contract awards — growth signal | SUFFICIENT |
+| **OECD API** | 20 req/min (per-IP, no auth) | 38-country macro/industry data | SUFFICIENT |
+| **TED API** | Undocumented per-IP rate limits (returns HTTP 429 under load) | EU government contract awards — growth signal | BEST_EFFORT — implement 429 handling with exponential backoff |
 | **Open PageRank API** | 4.3M domains/day | Domain authority scoring | SUFFICIENT |
 | **Brandfetch** | 500K req/mo | Company logos + brand data | SUFFICIENT |
-| **FRED API** | 120 req/min (non-commercial use only — verify applicability) | US macro-economic data | SUFFICIENT |
+| **FRED API** | **REMOVED** (2026-07-23) — non-commercial use only. ClarityRev is a commercial entity. See CREDENTIALS.yaml reasoning. | US macro-economic data — REPLACEMENT: World Bank API + IMF Data API | REMOVED — use World Bank API or IMF Data API instead |
 | **World Bank API** | Unlimited, no key | Global economic indicators | SUFFICIENT |
-| **IMF Data API** | Unlimited, no key | Global financial/economic data | SUFFICIENT |
+| **IMF Data API** | 50 req/s per app (app-name collision risk — use unique user_agent, 1.5s inter-call delay) | Global financial/economic data | SUFFICIENT |
 | **OpenAlex** | 100K req/day | 250M+ scholarly works | SUFFICIENT |
 | **YouTube Data API v3** | 10K quota/day | Video content, competitor channels | SUFFICIENT |
 | **Public ATS Job Board APIs** | Unlimited, no auth (Greenhouse, Lever, etc.) | Hiring signals — which companies are hiring, which roles | SUFFICIENT |
 | **Currents API** | 1,000 req/day, 30-day history | News monitoring | SUFFICIENT |
-| **Wikidata SPARQL** | 5s timeout/query, public endpoint | Structured company data (industry codes, revenue, funding) | SUFFICIENT |
+| **Wikidata SPARQL** | 5 concurrent/IP limit, 60s timeout/query (NOT 5s — fixed from incorrect doc) | Structured company data (industry codes, revenue, funding) | SUFFICIENT — limit to 3 concurrent queries per agent |
 | **ZEFIX API** | Unlimited, no auth (Switzerland) | Swiss company registry — full data, free REST API | SUFFICIENT |
 | **UK Companies House API** | 600 req/5 min | UK company registry | SUFFICIENT |
 | **CBS StatLine OData API** | Unlimited, no key | Netherlands market sizing by SBI code | SUFFICIENT |
@@ -171,14 +179,14 @@ START: Need data type X?
 | # | Data Type | Primary Tool | Fallback Tool | Cost per Niche | Freshness SLA |
 |---|---|---|---|---|---|
 | 1 | Competitor discovery | Firecrawl /search (relevance excerpts) | DataForSEO Labs SERP Competitors | 2-17 credits | 90 days |
-| 2 | Competitor pricing | Firecrawl /scrape (JS-rendered pages) | Firecrawl /search with excerpts | 6-20 credits | 90 days |
+| 2 | Competitor pricing | Firecrawl /scrape (JS-rendered pages) | DataForSEO OnPage API (free, tool-diverse fallback — SRE-H13 fix) + Firecrawl /search with excerpts | 6-20 credits | 90 days |
 | 3 | Reviews / VOC | Firecrawl /search + targeted /scrape on G2/Capterra | Reddit Research MCP | 0-20 credits | 180 days |
-| 4 | Market sizing | Firecrawl /search for "[niche] market size 2026" + EUROSTAT/OECD/CBS StatLine APIs (free, verified superior for gov statistics) | DataForSEO Keywords API for demand quantification | 2-5 credits | 180 days |
+| 4 | Market sizing | Firecrawl /search for "[niche] market size 2026" + EUROSTAT/OECD/CBS StatLine APIs (free, verified superior for gov statistics) | DataForSEO Keywords API for demand quantification — WARNING: search volume != market size. Flag as DATA_TYPE_MISMATCH in trace-map.yaml when substituting. Never substitute silently. | 2-5 credits | 180 days |
 | 5 | Company registry data | Firecrawl /scrape official registry pages OR OpenRegistry MCP (30 registries, free — better for structured multi-country queries) | Registry Lookup API (5K/mo) | 0-2 credits | 90 days |
 | 6 | Buyer language | Firecrawl /search for "[niche] reviews G2" + /scrape review pages. Reddit: Firecrawl /interact with authenticated profile | Reddit Research MCP (free fallback if profile unavailable) | 5-15 credits | 180 days |
-| 7 | Technographics | DataForSEO Domain Analytics ($1.21/1K companies — primary) | BuiltWith free API (2K/day — fallback) | $0-$0.01 | 180 days |
-| 8 | Hiring signals | Firecrawl /scrape public ATS job boards (Greenhouse, Lever — free, no auth) + Techmap Job Postings API | GDELT job market news | 3-5 credits | 7 days |
-| 9 | News / intent signals | Firecrawl /search with `--tbs qdr:w` (last week) + GDELT Project (free fallback, comprehensive but less targeted) | Currents API (1K/day) | 2-5 credits | 14 days |
+| 7 | Technographics | DataForSEO Domain Analytics ($1.21/1K companies — primary) | BuiltWith free API (2K/day — NOT CONFIGURED; register API key or accept DataForSEO-only for technographics) | $0-$0.01 | 180 days |
+| 8 | Hiring signals | Firecrawl /scrape public ATS job boards (Greenhouse.io public API: GET https://boards-api.greenhouse.io/v1/boards/{company}/jobs — free, no auth. Lever.co public API: GET https://api.lever.co/v0/postings/{company}?limit=20 — free, no auth) + Techmap Job Postings API (1K/mo) | SOURCE_UNAVAILABLE — GDELT CANNOT produce structured job counts. GDELT removed from hiring fallback chain (SRE-C07). Accept SOURCE_UNAVAILABLE as final fallback path. | 3-5 credits | 7 days |
+| 9 | News / intent signals | Firecrawl /search with `--tbs qdr:w` (last week) + GDELT Project (free fallback — MUST use exponential backoff + 3 retries: 1s/2s/4s + jitter) | Currents API (1K/day — NOT configured; install API key or accept Firecrawl-only fallback) | 2-5 credits | 14 days |
 | 10 | SEO / keyword data | DataForSEO Keywords API (batch 1K keywords/req — PRIMARY) | Firecrawl /search for SERP analysis | $0.0006-$0.30 | 90 days |
 | 11 | Competitor keyword profiling | DataForSEO Labs API (PRIMARY) | Firecrawl /search for competitor content analysis | $0.012-$0.50 | 90 days |
 | 12 | Backlink analysis | DataForSEO Backlinks API (PRIMARY) | Open PageRank (free — less comprehensive, use only if DataForSEO unavailable) | $0-$0.012 | 90 days |
@@ -532,6 +540,8 @@ Credit gates fire BEFORE each phase, not after. This ensures credits are verifie
 
 **Running credit tracking:** Every credit-consuming operation logs to `_program/CREDIT_BUDGET.yaml` with: timestamp, niche_id, tool, operation, credits_consumed, credits_remaining. The gate transition check reads the most recent `credits_remaining` value. Firecrawl credits are checked via `firecrawl credit-usage` at each gate; DataForSEO balance via dashboard check.
 
+**DataForSEO per-call balance check (SRE-HB2):** Before EVERY DataForSEO API call, query the account endpoint first (`GET /v3/dataforseo/account`). If the reported balance is $0.00 or the endpoint returns HTTP 402, use fallback immediately — do not waste the call cost. This prevents silent $0 consumption mid-niche. Preflight-check implements this as `check_dataforseo_balance()`. Agents must call this before any DFS API call.
+
 ---
 
 ### 4.6 Concurrency Management (BINDING)
@@ -564,7 +574,8 @@ Credit gates fire BEFORE each phase, not after. This ensures credits are verifie
 1. After canvas finalization, a SEPARATE (non-context-sharing) agent receives ONLY the `evidence/trace-map.yaml` from the completed canvas.
 2. The verifier randomly selects 10% of source URLs from the trace-map (minimum 5, maximum 20).
 3. The verifier independently re-fetches each URL, computes content hashes, and compares against trace-map entries.
-4. **Gate:** If >20% of re-checked hashes mismatch the trace-map, the ENTIRE canvas is flagged for human review. The canvas verdict is downgraded to `CONDITIONAL` pending verification.
+4. **URL redirect check:** The verifier records the RESOLVED URL (after any HTTP redirects or content delivery network rewrites). If the resolved URL differs from the documented source URL in the trace-map, flag `URL_REDIRECT_DETECTED` in the trace-map for that claim. A redirect does not necessarily invalidate the claim (the content may be identical at the new URL), but it signals potential link rot. If >30% of checked URLs redirect, flag the entire canvas as `CONDITIONAL` with annotation: "Significant URL churn detected — X% of verified sources redirect from documented URLs."
+5. **Gate:** If >20% of re-checked hashes mismatch the trace-map, the ENTIRE canvas is flagged for human review. The canvas verdict is downgraded to `CONDITIONAL` pending verification.
 5. Verifier credit budget: 10% of the original niche's consumed credits. Separate from the niche budget. The verifier shares NO agent context with the original niche agent — only the URL list.
 6. Verification result is logged to trace-map.yaml: `independent_verification: {verifier_agent: "", date: "", urls_checked: N, hashes_match: N, hashes_mismatch: N, verdict: PASS | FLAGGED}`
 
@@ -837,9 +848,9 @@ Before any canvas is marked complete, run the staleness audit:
 ### 6.4a Stale-but-Unchanged Re-Certification
 
 Data past its freshness SLA that has NOT actually changed may be re-certified without a full re-fetch. Procedure:
-1. Re-fetch a HEAD request (or a single representative URL from the data source) and compare the content hash against the original fetch's hash.
-2. If hashes match: the data is re-certified for ONE additional SLA period. Log `re_certified_date` and `re_certified_by` in the trace-map. Evidence grade is NOT downgraded during re-certification.
-3. If hashes differ: the data IS stale. Follow the normal staleness action (DEMOTE or BLOCK per §6.1).
+1. Re-fetch a **HEAD request** and compare the **ETag or Last-Modified header** against the original fetch's recorded headers. (CONTENT HASH comparison is NOT possible with HEAD — HEAD responses have no body. This was incorrectly documented as "compare the content hash" in prior versions. The correct approach is ETag or Last-Modified comparison.)
+2. If ETag/Last-Modified match: the data is re-certified for ONE additional SLA period. Log `re_certified_date` and `re_certified_by` in the trace-map. Evidence grade is NOT downgraded during re-certification.
+3. If ETag/Last-Modified differ (or are absent): the data IS stale. Follow the normal staleness action (DEMOTE or BLOCK per §6.1).
 4. Re-certification is limited to ONE extension per data source. After the extension period expires, a FULL re-fetch is required.
 5. This applies to data types with freshness SLA ≥90 days (MARKET, REVIEW, CERT, REGULATORY). HIGHEST-class data (JOB, HIRING, INTENT) cannot be re-certified — they MUST be re-fetched.
 
@@ -1015,6 +1026,12 @@ All depths use Firecrawl + DataForSEO as primary tools. Depth determines how MUC
 | **URL death between SLA check and delivery** (Lens 6 Gap 5) | Accepted for one-shot canvases. For recurring canvases, re-fetch on each cycle. |
 | **No staleness rollback procedure** (Lens 6 Gap 7) | If >10% stale, canvas is BLOCKED (§6.4). Rollback = re-fetch. No partial recovery needed. |
 | **Firecrawl relevance-excerpt accuracy uncalibrated for B2B niches** (Lens 1 Fix 3) | Monitor first 5 niches for relevance quality. If excerpts miss critical data, escalate to /scrape. |
+| **Budget verification ($2.3) has no tool support** (DQ-P3_1) | Inherently human process. Flag in §15 (Validation Plan) as pre-investment validation step. Cannot be automated. |
+| **Revenue leak benchmark (26%) is single vendor-commissioned source** (DQ-B02) | Clari 2024 study. Documented in trace-map.yaml as vendor-commissioned. Cross-validate with industry benchmarks when available. |
+| **Technical architecture inference has no assigned tool** (DQ-B03 / DQ-P2_4) | Same gap as Stackshare/BuiltWith inference. Options: Stackshare API or `[H]` downgrade for tech inference claims. |
+| **Ecosystem aggregator/channel economics has no tool** (DQ-B04) | Accepted as design work. Flag economic estimates as `[H]`-`[S]`. Firecrawl /search returns aggregator names only, not economics. |
+| **Signal catalog: 15 signals at 0 clients have no discovery pipeline** (DQ-B05) | Accepted. First 3 clients are calibration partners. Signal upgrades to `[P]` only after live validation. |
+| **Customer journey: no tool supports journey design** (DQ-B06) | Accepted as design section. Conversion rates inherit pricing grades (Section 4/9). Zero-client limitation documented. |
 
 ---
 
@@ -1113,6 +1130,20 @@ The pipeline collects data from multiple third-party sources. Each data type mus
 | Prospect CRM data (if collected) | 90 days post-prospect non-conversion | Prospect formally declines or 90 days no-contact | Securely delete all prospect-specific data; retain anonymized aggregate metrics |
 | Review data | 2 years post-fetch | Program archived | Delete raw review files; retain theme analysis (anonymized) |
 | CREDENTIALS.yaml | Delete immediately on credential rotation | Key rotated | `shred -u` the old file; never leave plaintext credentials on disk |
+
+### Program Closure Data Lifecycle
+
+When the 25-niche program completes, the following lifecycle governs all collected data:
+
+| Phase | Timing | Action |
+|---|---|---|
+| **Active** | During program | All data retained for ongoing niche evaluation |
+| **Archive** | 30 days post-program | Complete N-XXX/ canvases moved to `_archive/` (retain indefinitely for reference, even NO_GO verdicts — useful for future pattern analysis) |
+| **Dispose** | 30 days post-program | Raw fetched content (.firecrawl/ .dataforseo/) deleted per 30-day retention policy |
+| **Sunset** | 180 days post-program | SHARED/ competitor profiles not referenced by any active canvas archived to `_archive/defunct-competitors/` |
+| **Retain** | Indefinitely | Canvas outputs (NICHE-CANVAS-N-XXX.md), LEDGER.yaml, fertility rankings, cross-niche benchmarks (benchmarks/) |
+
+**Key principle:** Raw scraped content is disposed earliest (30 days). Structured analysis (canvases, benchmarks) is retained longest. CREDENTIALS.yaml is deleted immediately on rotation.
 
 **Data minimization:** The pipeline collects only data needed for the 15-section canvas. Do NOT collect: personal email addresses, phone numbers, home addresses, or any data not directly relevant to niche evaluation. If a data source inadvertently contains personal data beyond what's needed, strip it during the fetch→structure step.
 

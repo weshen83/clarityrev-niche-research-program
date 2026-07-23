@@ -1,0 +1,252 @@
+# =============================================================================
+# CAL-A-reconciliation.yaml
+# Generated: 2026-07-23
+# Purpose: Phase G Calibration Metrics
+# =============================================================================
+
+niche_id: CAL-A
+niche_name: Mid-Market IT Staffing Agencies on Bullhorn
+analysis_date: '2026-07-23'
+analyst: Phase G Calibration Pipeline
+ground_truth:
+  source: CAL-A-ground-truth-FINAL.yaml (v2.0)
+  section_scores_1_to_10:
+    SS1_Niche_Identity: 6.0
+    SS2_Buyer_Persona: 6.5
+    SS4_Competitive_Landscape: 5.5
+    SS10_Pricing_Model: 5.0
+    SS14_RIOS_Score: 4.5
+  rios_methodology_compliant: 2.25/5
+  verdict: VALIDATE FIRST
+  grade_counts_5_sections:
+    P: 11
+    E: 33
+    S: 6
+    H: 11
+  grade_pcts_5_sections:
+    P: 18.0
+    E: 54.1
+    H: 18.0
+    S: 9.8
+agent_a1:
+  source: N-CAL-A-CANVAS.md
+  rios_score: 3.4
+  rios_method: 6-dimension non-standard (Niche Attractiveness, Pain Severity, Buyer
+    Accessibility, Solution Fit, GTM Feasibility, Defensibility)
+  verdict: Conditional Go
+  grade_counts_5_sections:
+    P: 43
+    E: 43
+    H: 100
+    S: 6
+  grade_pcts_5_sections:
+    P: 22.4
+    E: 22.4
+    H: 52.1
+    S: 3.1
+agent_a2:
+  source: CANVAS-CAL-A.md
+  rios_score: 2.5
+  rios_method: 8-dimension methodology-compliant
+  verdict: VALIDATE FIRST
+  grade_counts_5_sections:
+    P: 31
+    E: 52
+    H: 60
+    S: 6
+  grade_pcts_5_sections:
+    P: 20.8
+    E: 34.9
+    H: 40.3
+    S: 4.0
+calibration_metrics:
+  cohens_kappa:
+    a1_vs_a2:
+      value: 0.7982
+      target: ≥0.61
+      pass: true
+      method: Distribution-based Cohen's Kappa on evidence grade proportions
+    a1_vs_ground_truth:
+      value: 0.4819
+      target: ≥0.61
+      pass: false
+    a2_vs_ground_truth:
+      value: 0.6413
+      target: ≥0.61
+      pass: true
+  icc_two_way:
+    a2_vs_ground_truth_8dim:
+      value: -0.2353
+      target: ≥0.75
+      pass: false
+      items_compared:
+      - Quantified Outcome
+      - Proven Likelihood
+      - Strategic Fit
+      - Time-to-Value (prime)
+      - Organizational Friction (prime)
+      - Perceived Risk (prime)
+      - Distributability
+      - Compounding
+      note: A2 and GT both use methodology-compliant 8-dimension RIOS. A1 uses non-standard
+        6-dimension and is excluded.
+  ground_truth_accuracy:
+    note: Only SS14 (RIOS) has directly comparable scores across all evaluators. A1
+      and A2 do not provide explicit 1-10 section scores for SS1-SS10.
+    ss14_rios:
+      gt_value_1to10: 4.5
+      a1_value_1to10: 6.8
+      a2_value_1to10: 5.0
+      a1_accuracy: 0.77
+      a2_accuracy: 0.95
+      target: ≥80%
+      a1_pass: false
+      a2_pass: true
+  grade_distribution_delta:
+    A1_vs_A2:
+      agent1_pcts:
+        P: 22.4
+        E: 22.4
+        H: 52.1
+        S: 3.1
+      agent2_pcts:
+        P: 20.8
+        E: 34.9
+        H: 40.3
+        S: 4.0
+      per_grade_delta_pp:
+        P: 1.6
+        E: 12.5
+        H: 11.8
+        S: 0.9
+      average_delta_pp: 13.41
+      target_per_grade: ≤10pp
+    A1_vs_GT:
+      agent1_pcts:
+        P: 22.4
+        E: 22.4
+        H: 52.1
+        S: 3.1
+      agent2_pcts:
+        P: 18.0
+        E: 54.1
+        H: 18.0
+        S: 9.8
+      per_grade_delta_pp:
+        P: 4.4
+        E: 31.7
+        H: 34.1
+        S: 6.7
+      average_delta_pp: 38.41
+      target_per_grade: ≤10pp
+    A2_vs_GT:
+      agent1_pcts:
+        P: 20.8
+        E: 34.9
+        H: 40.3
+        S: 4.0
+      agent2_pcts:
+        P: 18.0
+        E: 54.1
+        H: 18.0
+        S: 9.8
+      per_grade_delta_pp:
+        P: 2.8
+        E: 19.2
+        H: 22.2
+        S: 5.8
+      average_delta_pp: 25.01
+      target_per_grade: ≤10pp
+  verdict_match:
+    a1_vs_ground_truth:
+      match: false
+      expected: exact match
+    a2_vs_ground_truth:
+      match: true
+      expected: exact match
+  rios_composite_delta:
+    a1_vs_ground_truth:
+      delta: 1.15
+      target: ≤0.8
+      pass: false
+      note: A1 uses different dimensional framework
+    a2_vs_ground_truth:
+      delta: 0.25
+      target: ≤0.5
+      pass: true
+      note: A2 uses same methodological framework as GT
+  claim_count_variance:
+    a1_vs_a2:
+      a1_count: 192
+      a2_count: 149
+      relative_variance: 0.224
+      target: ≤30%
+      pass: true
+    a1_vs_ground_truth:
+      a1_count: 192
+      gt_count: 61
+      relative_variance: 0.6823
+    a2_vs_ground_truth:
+      a2_count: 149
+      gt_count: 61
+      relative_variance: 0.5906
+  evidence_grade_confusion_matrix:
+    a1_vs_ground_truth:
+      percent_deltas:
+        P: 4.4
+        E: -31.7
+        H: 34.1
+        S: -6.7
+      findings:
+        evidence_undercount: A1 under-uses [E] by 31.7pp — marks evidenced claims
+          as hypothesis
+        hypothesis_overuse: A1 over-uses [H] by 34.1pp — too cautious, under-confident
+        fabrication_risk: A1 [S] usage is -6.7pp vs GT — no elevation of speculative
+          claims (good)
+        proven_accuracy: A1 [P] usage is +4.4pp vs GT — slightly over-confident in
+          proven claims
+    a2_vs_ground_truth:
+      percent_deltas:
+        P: 2.8
+        E: -19.2
+        H: 22.2
+        S: -5.8
+      findings:
+        evidence_undercount: A2 under-uses [E] by 19.2pp — marks evidenced as hypothesis
+        hypothesis_overuse: A2 over-uses [H] by 22.2pp — too cautious, under-confident
+        fabrication_risk: A2 [S] usage is -5.8pp vs GT — no elevation of speculative
+          claims (good)
+        proven_accuracy: A2 [P] usage is +2.8pp vs GT — slightly over-confident
+  normalization_offsets:
+    note: Offsets computed for SS14 (RIOS) only. Full section-level offsets require
+      consistent scoring across SS1-SS10.
+    rios_offset:
+      a1_offset: 1.15
+      a2_offset: 0.25
+      formula: agent_rios - ground_truth_rios
+      usage: Add offset to future agent RIOS scores to normalize against ground-truth
+        baseline
+section_by_section_grade_breakdown:
+  SS1:
+    GT:
+      P: 2
+      E: 4
+      S: 1
+      H: 1
+    A1:
+      P: 37
+      E: 17
+      H: 45
+      S: 5
+    A2:
+      E: 8
+      H: 26
+methodology_notes:
+- Cohen's Kappa computed from grade distribution proportions (distribution-based,
+  not item-by-item) because each evaluator uses different claim sets
+- ICC(2,1) computed on RIOS dimension scores only for A2 vs GT (both use 8-dimension
+  methodology-compliant framework)
+- A1 uses non-standard 6-dimension RIOS, preventing direct dimension-level comparison
+- Ground-truth accuracy limited to SS14 because A1/A2 lack explicit 1-10 section scores
+- Grade counts reflect [P], [E], [H], [S] markers found within the 5 designated sections
+  of each canvas

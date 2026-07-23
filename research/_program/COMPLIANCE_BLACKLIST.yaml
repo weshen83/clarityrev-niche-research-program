@@ -1,0 +1,113 @@
+# COMPLIANCE_BLACKLIST.yaml — Domains with restricted automated access
+#
+# This file lists domains whose Terms of Service prohibit or restrict
+# automated data collection (scraping, crawling, automated queries).
+# Pipeline tools MUST respect these restrictions.
+#
+# When a domain is listed as PROHIBITED:
+#   - Do NOT use Firecrawl /scrape, /crawl, or /map on this domain
+#   - Do NOT use curl, wget, or any other automated fetch tool
+#   - Use fallback tools (DataForSEO SERP API, Google search, etc.)
+#
+# Last updated: 2026-07-23
+# Maintainer: Wesley
+
+domains:
+  - domain: "g2.com"
+    status: "PROHIBITED"
+    tos_url: "https://legal.g2.com/terms-of-use"
+    relevant_section: "Section 9 — Prohibited Automated Access, Scraping, and Data Extraction"
+    tos_quote: >
+      You may not access or collect any Content from the Site through automated,
+      programmatic, or mechanical means (including robots, spiders, crawlers, scrapers...)
+    verified_date: "2026-07-23"
+    verified_by: "Wesley"
+    fallback: "DataForSEO SERP API for G2 review mentions in search results"
+    notes: >
+      G2's Section 9 explicitly prohibits scraping, automated access, and using
+      site content for commercial purposes including derivative works. The pipeline
+      previously scraped g2.com/products/*/reviews via Firecrawl. This is now
+      PROHIBITED. Use DataForSEO SERP API instead — SERP data is Google's index,
+      not subject to G2's ToS.
+
+  - domain: "capterra.com"
+    status: "PROBABLY_PROHIBITED"
+    tos_url: "https://www.capterra.com/terms-of-use/"
+    relevant_section: "See: automated access restrictions"
+    tos_quote: "TBD — Capterra ToS not fully reviewed yet"
+    verified_date: "2026-07-23"
+    verified_by: "Wesley"
+    fallback: "DataForSEO SERP API"
+    notes: >
+      Capterra is owned by Gartner. ToS likely prohibits scraping similar to G2.
+      Default to PROHIBITED until verified. Use DataForSEO SERP API as fallback.
+
+  - domain: "linkedin.com"
+    status: "PROHIBITED"
+    tos_url: "https://www.linkedin.com/legal/user-agreement"
+    relevant_section: "Do not — Section 8.2"
+    tos_quote: "You agree that you will not: [...] scrape or copy profiles and information of others through any means (including crawlers, browser extensions and plugins, and any other technology)"
+    verified_date: "2026-07-23"
+    verified_by: "Wesley"
+    fallback: "Public ATS APIs (Greenhouse, Lever) for hiring signals; GDELT for executive news"
+    notes: >
+      LinkedIn scraping is explicitly against ToS. The pipeline has never scraped
+      LinkedIn. Continue using non-LinkedIn sources for hiring signals and
+      executive movement detection.
+
+  - domain: "reddit.com"
+    status: "OFFICIAL_API_ONLY"
+    tos_url: "https://www.reddit.com/wiki/api-terms"
+    relevant_section: "Reddit API Terms — commercial use requires paid access"
+    tos_quote: "Scraping without API access violates Reddit's ToS"
+    verified_date: "2026-07-23"
+    verified_by: "Wesley"
+    method: "reddit-research-mcp (uses official Reddit API via PRAW, not scraping)"
+    notes: >
+      The Reddit Research MCP (reddit-research-mcp.fastmcp.app/mcp) uses the
+      official Reddit API via PRAW with Descope OAuth2. It does NOT scrape.
+      This is compliant. However, the MCP license is "read-only and non-commercial
+      by design" — commercial usage may require separate Reddit API paid access
+      ($0.24/1K API calls) depending on the MCP provider's terms.
+      Budget $1-2/month if Reddit API access costs are incurred.
+
+  - domain: "trustpilot.com"
+    status: "PROBABLY_PROHIBITED"
+    tos_url: "https://legal.trustpilot.com/for-reviewers/end-user-terms-and-conditions"
+    relevant_section: "See: automated access restrictions"
+    tos_quote: "TBD — not reviewed"
+    verified_date: "2026-07-23"
+    verified_by: "Unverified"
+    fallback: "DataForSEO Business Data API (Google Maps reviews)"
+    notes: >
+      Trustpilot likely prohibits scraping. Use DataForSEO Business Data API
+      for review extraction from Google Maps listings.
+
+  - domain: "crunchbase.com"
+    status: "PROBABLY_PROHIBITED"
+    tos_url: "https://about.crunchbase.com/terms-of-service/"
+    relevant_section: "See: automated access restrictions"
+    tos_quote: "TBD — not reviewed"
+    verified_date: "2026-07-23"
+    verified_by: "Unverified"
+    fallback: "DataForSEO SERP API or Firecrawl /search"
+    notes: >
+      Crunchbase free tier generally allows limited automated access via their
+      API. Web scraping of Crunchbase pages likely prohibited. Use DataForSEO
+      SERP or Firecrawl /search (which uses Firecrawl's index, not direct
+      Crunchbase access).
+
+compliance_notes:
+  - note: >
+      COMPLIANCE_BLACKLIST.yaml is reviewed every 10 niches. New domains
+      encountered during pipeline research should be checked against their ToS
+      before any automated access.
+  - note: >
+      Firecrawl /search is generally safe for any domain — it accesses
+      Firecrawl's search index, not the domain directly. Firecrawl /scrape
+      on the other hand directly fetches from the target domain and IS
+      subject to that domain's ToS.
+  - note: >
+      DataForSEO SERP API returns search engine results (Google's index),
+      which are NOT subject to individual website ToS. This is the recommended
+      fallback when direct scraping of a domain is prohibited.

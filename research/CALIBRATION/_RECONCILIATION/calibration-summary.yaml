@@ -1,0 +1,118 @@
+# =============================================================================
+# calibration-summary.yaml
+# Generated: 2026-07-23
+# Purpose: Phase G Calibration Metrics
+# =============================================================================
+
+report_title: Phase G Calibration Summary — All Metrics
+analysis_date: '2026-07-23'
+methodology: 'NICHE-METHODOLOGY.md v1.0 Appendix A (5 ground-truthed sections: SS1,
+  SS2, SS4, SS10, SS14)'
+cal_a_summary:
+  ground_truth:
+    version: 2.0 (final corrected after 5-panel review)
+    data_richness: MODERATE-HIGH
+    section_scores:
+      SS1: 6.0
+      SS2: 6.5
+      SS4: 5.5
+      SS10: 5.0
+      SS14: 4.5
+    rios_methodology: 2.25/5 (8-dimension, 3 inverted)
+    verdict: VALIDATE FIRST
+  agent_a1:
+    rios: 3.4
+    rios_method: 6-dim non-standard
+    verdict: Conditional Go
+    grade_total: 192
+  agent_a2:
+    rios: 2.5
+    rios_method: 8-dim methodology-compliant
+    verdict: VALIDATE FIRST
+    grade_total: 149
+cal_b_summary:
+  agent_b1:
+    rios: 3.1
+    rios_method: 8-dim methodology-compliant
+    verdict: VALIDATE FIRST
+    uncertainty: HIGH-UNCERTAINTY (58% H+S)
+    grade_total: 98
+  agent_b2:
+    rios: 2.75
+    rios_method: 6-dim custom
+    verdict: VALIDATE FIRST
+    uncertainty: MEDIUM-HIGH (~55% H+S)
+    grade_total: 99
+metrics_summary:
+  kappa_a1_vs_a2:
+    value: 0.7982
+    target: ≥0.61
+    pass: true
+  kappa_a1_vs_gt:
+    value: 0.4819
+    target: ≥0.61
+    pass: false
+  kappa_a2_vs_gt:
+    value: 0.6413
+    target: ≥0.61
+    pass: true
+  icc_a2_vs_gt_8dim:
+    value: -0.2353
+    target: ≥0.75
+    pass: false
+  gt_accuracy_a1_ss14:
+    value: 0.77
+    target: ≥80%
+    pass: false
+  gt_accuracy_a2_ss14:
+    value: 0.95
+    target: ≥80%
+    pass: true
+  verdict_match_a1_vs_gt:
+    a1: Conditional Go
+    gt: VALIDATE FIRST
+    pass: false
+  verdict_match_a2_vs_gt:
+    a2: VALIDATE FIRST
+    gt: VALIDATE FIRST
+    pass: true
+  verdict_match_b1_vs_b2:
+    b1: VALIDATE FIRST
+    b2: VALIDATE FIRST
+    pass: true
+  rios_delta_a1_vs_gt:
+    value: 1.15
+    target: ≤0.8
+    pass: false
+  rios_delta_a2_vs_gt:
+    value: 0.25
+    target: ≤0.5
+    pass: true
+  rios_delta_b1_vs_b2:
+    value: 0.35
+    target: ≤0.8
+    pass: true
+  claim_count_variance_a1_vs_a2:
+    value: 0.224
+    target: ≤30%
+    pass: true
+  claim_count_variance_b1_vs_b2:
+    value: 0.0101
+    target: ≤30%
+    pass: true
+recommendations:
+- Implement consistent 8-dimension RIOS framework across ALL agents (A1's 6-dim framework
+  is incompatible)
+- Add explicit 1-10 section-level scoring requirement to agent canvas templates (currently
+  only GT has SS1-SS10 scores)
+- CAL-B data-sparse calibration confirms both agents reach same verdict despite different
+  frameworks — good inter-rater signal
+- A2 more closely matches GT on both RIOS composite (Δ=0.25) and verdict than A1 (Δ=1.15)
+- Grade distribution differences suggest calibration needed on [P] vs [E] thresholds
+open_issues:
+- Cannot compute full ground-truth accuracy because A1/A2 lack explicit 1-10 section
+  scores for SS1-SS10
+- A1's 6-dimension RIOS prevents direct dimension-level ICC comparison with GT (8-dimension)
+- B1 and B2 use different dimensional frameworks — ICC not possible at dimension level
+- Claim-level (item-by-item) Cohen's Kappa requires aligning specific claims across
+  canvases — future enhancement

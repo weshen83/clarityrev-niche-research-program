@@ -1,0 +1,906 @@
+#!/usr/bin/env python3
+"""
+semantic-checker — Script 6 of the ClarityRev 25-niche evaluation pipeline.
+
+Google SRE pattern: software engineering for operations.
+
+Purpose: Replace the deterministic grade engine (binary criteria only) with
+a semantic verifier that uses the Claude API to evaluate whether a source
+actually supports a claim. A fabricated claim with a real URL passes all 4
+binary checks — this script catches that gap.
+
+Cost control: Only 20% of claims are semantically verified per run (deterministic
+hash-based sampling), plus ALL claims in CRITICAL sections (market_size,
+competitive_threat, revenue_leak). Non-sampled claims receive a deterministic-only
+marker.
+
+Input:  research/{niche_id}/evidence-claims.json
+        JSON array of { claim_text, source_url, section, trace_map_id }
+
+Output: research/{niche_id}/evidence-grades-semantic.json
+        JSON object with per-claim grades, sampling metadata, and alerts
+
+Usage:
+    # Full run for one niche
+    python3 semantic-checker --niche N-001
+
+    # Dry run (no API calls — report what would be checked)
+    python3 semantic-checker --niche N-001 --dry-run
+
+    # Agent mode (compact JSON output, no stderr)
+    python3 semantic-checker --niche N-001 --agent-mode
+
+    # Custom model
+    python3 semantic-checker --niche N-001 --model claude-opus-4-20250514
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+# ─── Path Bootstrap ────────────────────────────────────────────────────────────
+# Resolve sibling paths so we can import from lib/ without requiring PYTHONPATH.
+# This follows the same pattern used by all 5 existing pipeline scripts.
+
+_SCRIPT_DIR = Path(__file__).resolve().parent          # _pipelines/
+_LIB_DIR = _SCRIPT_DIR / "lib"
+sys.path.insert(0, str(_SCRIPT_DIR))
+
+# ─── Third-party imports ──────────────────────────────────────────────────────
+
+try:
+    import requests
+except ImportError as e:
+    print(f"FATAL: requests required. Install: pip install requests\n  {e}", file=sys.stderr)
+    sys.exit(3)
+
+# ─── Pipeline shared library ──────────────────────────────────────────────────
+
+from lib.pipeline_ops import (
+    yaml, load_yaml_safe, write_yaml_atomic, emit_result, emit_log,
+    ExitCode, PROGRAM_DIR, REPO_ROOT, now_utc, format_date,
+    resolve_niche_dir,
+)
+
+# Derive RESEARCH_DIR from PROGRAM_DIR (which is research/_program)
+RESEARCH_DIR = PROGRAM_DIR.parent
+
+
+# ─── Constants ─────────────────────────────────────────────────────────────────
+
+SAMPLING_FRACTION = 0.20  # 20% of claims get semantic verification
+
+CRITICAL_SECTIONS = frozenset({
+    "market_size",
+    "competitive_threat",
+    "revenue_leak",
+})
+
+FIRECRAWL_DIR = REPO_ROOT / ".firecrawl"
+SEMANTIC_CREDITS_KEY = "semantic_credits_consumed"
+
+# Claude Messages API endpoint
+CLAUDE_API_URL = "https://api.anthropic.com/v1/messages"
+
+# Default model — cheapest capable model for text classification
+DEFAULT_MODEL = "claude-sonnet-4-20250514"
+
+# Max source content chars to include in prompt (cost control)
+MAX_SOURCE_CHARS = 8000
+
+
+# ─── Sampling ──────────────────────────────────────────────────────────────────
+
+def deterministic_sample(claim_text: str) -> bool:
+    """Deterministic 20% sample based on SHA-256 hash of claim_text.
+
+    The first byte of the hash determines sampling: values < 51 (20% of 256)
+    are sampled. This guarantees the same claim always gets the same sampling
+    decision regardless of processing order, parallelization, or retries.
+
+    Returns:
+        True if the claim should be semantically verified.
+    """
+    h = hashlib.sha256(claim_text.encode("utf-8")).digest()
+    threshold = int(256 * SAMPLING_FRACTION)  # ~51
+    return h[0] < threshold
+
+
+def should_semantic_check(claim: dict) -> bool:
+    """Determine if a claim warrants a full semantic (Claude API) verification.
+
+    A claim is checked if:
+    1. Its section is in CRITICAL_SECTIONS (always check), OR
+    2. Its claim_text hash falls in the 20% deterministic sampling bucket
+
+    Args:
+        claim: A claim dict from evidence-claims.json
+
+    Returns:
+        True if this claim should be verified via Claude API.
+    """
+    section = claim.get("section", "")
+    claim_text = claim.get("claim_text", "")
+
+    if section in CRITICAL_SECTIONS:
+        return True
+
+    return deterministic_sample(claim_text)
+
+
+# ─── Source Content Fetching ──────────────────────────────────────────────────
+
+def find_cached_firecrawl(source_url: str) -> str | None:
+    """Search .firecrawl/ directory for cached content matching a source URL.
+
+    Checks two strategies:
+    1. URL substring match in file content
+    2. Filename containing the last path segment of the URL
+
+    This prevents redundant HTTP fetches for URLs that were already scraped
+    during the research phase (R2: Check cache before any fetch).
+
+    Args:
+        source_url: The URL to find cached content for
+
+    Returns:
+        Full text content of the first matching cached file, or None.
+    """
+    url_lower = source_url.lower().rstrip("/")
+    url_last_segment = url_lower.split("/")[-1] if "/" in url_lower else ""
+
+    if not FIRECRAWL_DIR.exists():
+        return None
+
+    for f in sorted(FIRECRAWL_DIR.iterdir()):
+        if not f.is_file():
+            continue
+        try:
+            content = f.read_text(encoding="utf-8", errors="replace")
+            # Quick content check: does the URL or a close variant appear?
+            if url_lower in content.lower():
+                return content
+            # Filename match fallback
+            if url_last_segment and url_last_segment in f.name.lower():
+                return content
+        except (OSError, UnicodeDecodeError):
+            continue
+
+    return None
+
+
+def fetch_source_content(source_url: str, timeout: int = 15) -> str | None:
+    """Fetch source content, preferring .firecrawl/ cache over HTTP.
+
+    Pipeline:
+    1. Check .firecrawl/ directory for cached file (zero cost, instant)
+    2. Fall back to HTTP GET request with timeout
+    3. Truncate to MAX_SOURCE_CHARS to limit token consumption
+
+    Args:
+        source_url: The URL to fetch content from
+        timeout: HTTP request timeout in seconds (default: 15)
+
+    Returns:
+        Text content (first MAX_SOURCE_CHARS chars), or None on failure.
+    """
+    # Phase 1: Cache check (R2 binding — check cache before fetch)
+    cached = find_cached_firecrawl(source_url)
+    if cached is not None:
+        return cached[:MAX_SOURCE_CHARS]
+
+    # Phase 2: HTTP fetch
+    try:
+        headers = {
+            "User-Agent": (
+                "ClarityRev-Niche-Pipeline/1.0 "
+                "(research-automation; +https://clarityrev.com)"
+            )
+        }
+        resp = requests.get(source_url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+
+        # Return text content capped to limit prompt size
+        content = resp.text[:MAX_SOURCE_CHARS]
+        return content
+
+    except requests.RequestException:
+        return None
+
+
+# ─── Claude API Integration ───────────────────────────────────────────────────
+
+GRADE_RUBRIC = """\
+## Grade Rubric
+
+| Grade | Meaning |
+|-------|---------|
+| SUPPORTS | Source content directly supports the claim with specific evidence, data, or explicit statements |
+| PARTIALLY_SUPPORTS | Source content partially supports or tangentially relates to the claim; some evidence exists but is indirect |
+| NEUTRAL | Source content is neutral — neither supports nor contradicts |
+| CONTRADICTS | Source content actively contradicts the claim with contrary evidence or explicit statements |\
+"""
+
+
+def build_verification_prompt(claim: dict, source_content: str) -> str:
+    """Build the Claude API prompt to verify a single claim against its source.
+
+    The prompt includes:
+    - The grade rubric (exact mapping from SEMANTIC_GRADE_SCHEMA.yaml)
+    - The claim text and section context
+    - The source content (truncated to MAX_SOURCE_CHARS)
+    - A strict JSON output constraint
+
+    Args:
+        claim: Claim dict with claim_text and section fields
+        source_content: Raw source text to evaluate
+
+    Returns:
+        Full prompt string ready for the Claude API.
+    """
+    claim_text = claim.get("claim_text", "")
+    section = claim.get("section", "")
+
+    prompt = f"""\
+You are an evidence verifier for a market research pipeline.
+Your task is to determine if a source supports, contradicts, or is neutral toward a given claim.
+
+{GRADE_RUBRIC}
+
+## Claim
+Section: {section}
+Claim text: "{claim_text}"
+
+## Source Content
+---SOURCE START---
+{source_content}
+---SOURCE END---
+
+Respond with a JSON object (ONLY valid JSON, no markdown, no code fences):
+{{
+  "support_level": "SUPPORTS|PARTIALLY_SUPPORTS|NEUTRAL|CONTRADICTS",
+  "confidence": 0.0-1.0,
+  "extracted_quote": "Verbatim quote from source that supports your decision",
+  "rationale": "Brief explanation of your grade assignment"
+}}"""
+    return prompt
+
+
+def extract_json_from_response(response_text: str) -> dict | None:
+    """Extract a JSON object from a Claude API text response.
+
+    Handles:
+    - Pure JSON responses
+    - Markdown code-fence-wrapped JSON
+    - Responses with leading/trailing text around JSON
+
+    Args:
+        response_text: Raw text from Claude API content block
+
+    Returns:
+        Parsed dict, or None if no valid JSON found.
+    """
+    # Strategy 1: Extract first { ... } block with regex
+    json_match = re.search(r'\{[^{}]*\}', response_text, re.DOTALL)
+    if json_match:
+        candidate = json_match.group()
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError:
+            pass
+
+    # Strategy 2: Find nested braces — count depth
+    depth = 0
+    start = -1
+    for i, ch in enumerate(response_text):
+        if ch == '{':
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == '}':
+            depth -= 1
+            if depth == 0 and start >= 0:
+                try:
+                    return json.loads(response_text[start:i + 1])
+                except json.JSONDecodeError:
+                    start = -1
+
+    # Strategy 3: Try full parse as last resort
+    try:
+        return json.loads(response_text.strip())
+    except json.JSONDecodeError:
+        return None
+
+
+def call_claude_api(prompt: str, api_key: str, model: str = DEFAULT_MODEL) -> dict | None:
+    """Call the Claude Messages API to verify a claim.
+
+    Uses the simplest possible invocation: a single user message with
+    max_tokens=500. No system prompt, no tools — just a classification task.
+
+    Args:
+        prompt: The verification prompt (from build_verification_prompt)
+        api_key: Anthropic API key
+        model: Claude model ID
+
+    Returns:
+        Parsed JSON response dict with support_level, confidence,
+        extracted_quote, and rationale fields, or None on failure.
+    """
+    headers = {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    payload = {
+        "model": model,
+        "max_tokens": 500,
+        "messages": [{"role": "user", "content": prompt}],
+    }
+
+    try:
+        resp = requests.post(CLAUDE_API_URL, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+
+        # Extract text from content blocks
+        content_blocks = data.get("content", [])
+        response_text = ""
+        for block in content_blocks:
+            if block.get("type") == "text":
+                response_text += block.get("text", "")
+
+        if not response_text:
+            emit_log("ERROR", "Claude API returned empty content")
+            return None
+
+        # Parse JSON from response
+        result = extract_json_from_response(response_text)
+        if result is None:
+            emit_log(
+                "ERROR",
+                f"Failed to parse Claude response as JSON: {response_text[:200]}"
+            )
+            return None
+
+        # Validate required fields
+        required = {"support_level", "confidence", "extracted_quote", "rationale"}
+        missing = required - set(result.keys())
+        if missing:
+            emit_log(
+                "WARNING",
+                f"Claude response missing fields: {missing}"
+            )
+
+        # Normalize support_level
+        valid_levels = {"SUPPORTS", "PARTIALLY_SUPPORTS", "NEUTRAL", "CONTRADICTS"}
+        level = result.get("support_level", "").upper()
+        if level not in valid_levels:
+            emit_log(
+                "WARNING",
+                f"Invalid support_level '{level}', defaulting to NEUTRAL"
+            )
+            result["support_level"] = "NEUTRAL"
+
+        return result
+
+    except requests.Timeout:
+        emit_log("ERROR", "Claude API request timed out")
+        return None
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response is not None else "unknown"
+        emit_log("ERROR", f"Claude API HTTP {status}: {e}")
+        return None
+    except requests.RequestException as e:
+        emit_log("ERROR", f"Claude API request failed: {e}")
+        return None
+
+
+# ─── Credit / Cost Tracking ────────────────────────────────────────────────────
+
+def track_semantic_cost(credits_used: int = 1, niche_id: str | None = None):
+    """Update CREDIT_BUDGET.yaml with semantic credits consumed.
+
+    CRITICAL: Uses atomic write pattern (write to .tmp, re-read for validation,
+    then os.replace) to prevent corruption when multiple pipeline stages run
+    concurrently. This is the same pattern used by all shared governance files.
+
+    Args:
+        credits_used: Number of API calls made (default: 1)
+        niche_id: Optional niche ID for logging correlation
+    """
+    budget_path = PROGRAM_DIR / "CREDIT_BUDGET.yaml"
+    budget = load_yaml_safe(budget_path) or {}
+
+    current = budget.get(SEMANTIC_CREDITS_KEY, 0)
+    if not isinstance(current, (int, float)):
+        current = 0
+    budget[SEMANTIC_CREDITS_KEY] = current + credits_used
+
+    write_yaml_atomic(budget, budget_path)
+    emit_log("INFO", f"Semantic credits consumed: +{credits_used} (total: {current + credits_used})", niche_id)
+
+
+# ─── Evidence Integrity Alerting ──────────────────────────────────────────────
+
+def raise_integrity_alert(
+    claim: dict,
+    verdict: str,
+    source_url: str,
+    rationale: str,
+):
+    """Append an evidence integrity alert to EVIDENCE_INTEGRITY_ALERT.yaml.
+
+    Alerts fire under these conditions:
+    - CONTRADICTS: Claim is actively contradicted by its source (WARNING)
+    - CRITICAL section + NEUTRAL: Key claim has no support (CRITICAL)
+    - CRITICAL section + SOURCE_UNAVAILABLE: Key claim can't be verified (CRITICAL)
+
+    Args:
+        claim: The claim dict (must contain niche_id, trace_map_id, claim_text, section)
+        verdict: The semantic grade (CONTRADICTS, NEUTRAL, or SOURCE_UNAVAILABLE)
+        source_url: The source URL that was checked
+        rationale: Why the alert was raised
+    """
+    alert_path = PROGRAM_DIR / "EVIDENCE_INTEGRITY_ALERT.yaml"
+    alerts = load_yaml_safe(alert_path) or {
+        "version": "1.0",
+        "description": "Schema for evidence integrity alerts generated by the semantic checker",
+        "alerts": [],
+    }
+
+    niche_id = claim.get("niche_id", "unknown")
+    trace_map_id = claim.get("trace_map_id", "unknown")
+    claim_text = claim.get("claim_text", "")
+    section = claim.get("section", "")
+
+    # Generate unique alert_id
+    date_str = format_date(now_utc())
+    existing_count = len(alerts.get("alerts", []))
+    alert_id = f"ALERT-{date_str}-{niche_id}-{existing_count + 1:03d}"
+
+    # Determine severity
+    if verdict == "CONTRADICTS":
+        severity = "WARNING"
+    elif section in CRITICAL_SECTIONS and verdict in ("NEUTRAL", "SOURCE_UNAVAILABLE"):
+        severity = "CRITICAL"
+    else:
+        severity = "WARNING"
+
+    alert = {
+        "alert_id": alert_id,
+        "niche_id": niche_id,
+        "trace_map_id": trace_map_id,
+        "claim_text": claim_text,
+        "verifier_verdict": verdict,
+        "source_url": source_url,
+        "timestamp": now_utc().isoformat(),
+        "severity": severity,
+        "rationale": rationale,
+    }
+
+    alerts.setdefault("alerts", []).append(alert)
+    write_yaml_atomic(alerts, alert_path)
+
+    emit_log(severity, f"Integrity alert [{alert_id}]: {claim_text[:60]}...", niche_id)
+
+
+# ─── Core Processing ──────────────────────────────────────────────────────────
+
+def process_niche(
+    niche_id: str,
+    api_key: str,
+    dry_run: bool = False,
+    force_model: str | None = None,
+    agent_mode: bool = False,
+):
+    """Run semantic verification for all claims in a niche's evidence-claims.json.
+
+    Processing pipeline:
+    1. Load evidence-claims.json from research/{niche_id}/
+    2. For each claim, determine if it qualifies for semantic check
+       (20% hash-based sample + ALL CRITICAL section claims)
+    3. For sampled claims:
+       a. Fetch source content (cache-first, HTTP fallback)
+       b. Call Claude API for verification
+       c. Record the grade + extracted quote + rationale
+       d. Raise integrity alerts for contradictions or critical failures
+    4. For non-sampled claims: record deterministic-only marker
+    5. Write graded results to evidence-grades-semantic.json
+    6. Track API cost in CREDIT_BUDGET.yaml
+
+    Args:
+        niche_id: Niche identifier (e.g. N-001)
+        api_key: Anthropic API key for Claude API calls
+        dry_run: If True, no API calls are made (report-only)
+        force_model: Override the default Claude model
+        agent_mode: If True, suppress stderr output
+    """
+    # Resolve paths
+    niche_dir = RESEARCH_DIR / niche_id
+    claims_path = niche_dir / "evidence-claims.json"
+    output_path = niche_dir / "evidence-grades-semantic.json"
+
+    # ── Load evidence-claims.json ────────────────────────────────────────
+    if not claims_path.exists():
+        emit_log("ERROR", f"evidence-claims.json not found: {claims_path}", niche_id)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": f"Missing evidence-claims.json for {niche_id}",
+            "niche_id": niche_id,
+        })
+
+    try:
+        with open(claims_path, "r") as f:
+            claims = json.load(f)
+    except json.JSONDecodeError as e:
+        emit_log("ERROR", f"Invalid JSON in evidence-claims.json: {e}", niche_id)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": f"Invalid JSON: {e}",
+            "niche_id": niche_id,
+        })
+    except IOError as e:
+        emit_log("ERROR", f"Cannot read evidence-claims.json: {e}", niche_id)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": str(e),
+            "niche_id": niche_id,
+        })
+
+    if not isinstance(claims, list):
+        emit_log("ERROR", "evidence-claims.json must be a JSON array", niche_id)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "evidence-claims.json is not a JSON array",
+            "niche_id": niche_id,
+        })
+
+    total = len(claims)
+    emit_log("INFO", f"Loaded {total} claims for {niche_id}", niche_id)
+
+    # ── Process each claim ───────────────────────────────────────────────
+    ts = now_utc()
+    results: list[dict] = []
+    sampled_count = 0
+    fetched_count = 0
+    api_calls = 0
+    alerts_raised = 0
+
+    for i, claim in enumerate(claims):
+        claim_text = claim.get("claim_text", "")
+        source_url = claim.get("source_url", "")
+        section = claim.get("section", "")
+        trace_map_id = claim.get("trace_map_id", f"C-{i + 1:03d}")
+
+        # Enrich claim with niche_id for alert generation
+        claim["niche_id"] = niche_id
+
+        # ── Sampling decision ────────────────────────────────────────────
+        if not should_semantic_check(claim):
+            results.append({
+                "claim_text": claim_text,
+                "source_url": source_url,
+                "support_level": None,
+                "confidence": None,
+                "extracted_quote": None,
+                "rationale": (
+                    "Deterministic grade only — not sampled "
+                    "for semantic verification"
+                ),
+                "verifier_timestamp": ts.isoformat(),
+                "trace_map_id": trace_map_id,
+                "section": section,
+                "niche_id": niche_id,
+                "semantic_verified": False,
+            })
+            continue
+
+        sampled_count += 1
+        progress = f"[{sampled_count}/{total}]"
+        emit_log("DEBUG", f"Sampled {progress}: {claim_text[:60]}...", niche_id)
+
+        # ── Fetch source content ─────────────────────────────────────────
+        source_content = fetch_source_content(source_url)
+
+        if source_content is None:
+            fetched_count += 1
+            result = {
+                "claim_text": claim_text,
+                "source_url": source_url,
+                "support_level": "SOURCE_UNAVAILABLE",
+                "confidence": None,
+                "extracted_quote": None,
+                "rationale": (
+                    "Source could not be fetched "
+                    "(404, timeout, rate-limit, or DNS failure)"
+                ),
+                "verifier_timestamp": ts.isoformat(),
+                "trace_map_id": trace_map_id,
+                "section": section,
+                "niche_id": niche_id,
+                "semantic_verified": True,
+            }
+            results.append(result)
+
+            # CRITICAL section claim — source unavailable blocks pipeline
+            if section in CRITICAL_SECTIONS:
+                raise_integrity_alert(
+                    claim, "SOURCE_UNAVAILABLE", source_url,
+                    "CRITICAL-section claim source unavailable — "
+                    "cannot verify claim. Pipeline progression blocked "
+                    "until source is fetched or claim is re-evaluated."
+                )
+                alerts_raised += 1
+            continue
+
+        fetched_count += 1
+
+        # ── Dry run: skip API call ──────────────────────────────────────
+        if dry_run:
+            results.append({
+                "claim_text": claim_text,
+                "source_url": source_url,
+                "support_level": None,
+                "confidence": None,
+                "extracted_quote": None,
+                "rationale": "Dry run — no API call made",
+                "verifier_timestamp": ts.isoformat(),
+                "trace_map_id": trace_map_id,
+                "section": section,
+                "niche_id": niche_id,
+                "semantic_verified": False,
+                "_dry_run": True,
+            })
+            continue
+
+        # ── Call Claude API ─────────────────────────────────────────────
+        prompt = build_verification_prompt(claim, source_content)
+        model = force_model or DEFAULT_MODEL
+        api_result = call_claude_api(prompt, api_key, model)
+        api_calls += 1
+
+        if api_result is None:
+            # API call failed — record as unavailable
+            results.append({
+                "claim_text": claim_text,
+                "source_url": source_url,
+                "support_level": "SOURCE_UNAVAILABLE",
+                "confidence": None,
+                "extracted_quote": None,
+                "rationale": "Claude API call failed — could not verify claim",
+                "verifier_timestamp": ts.isoformat(),
+                "trace_map_id": trace_map_id,
+                "section": section,
+                "niche_id": niche_id,
+                "semantic_verified": True,
+                "_api_error": True,
+            })
+
+            if section in CRITICAL_SECTIONS:
+                raise_integrity_alert(
+                    claim, "SOURCE_UNAVAILABLE", source_url,
+                    "CRITICAL-section claim — Claude API call failed"
+                )
+                alerts_raised += 1
+            continue
+
+        # ── Successful verification ──────────────────────────────────────
+        support_level = api_result.get("support_level", "NEUTRAL")
+        confidence = api_result.get("confidence", 0.5)
+        extracted_quote = api_result.get("extracted_quote", "")
+        rationale = api_result.get("rationale", "No rationale provided")
+
+        # Truncate long text fields to prevent output file bloat
+        if isinstance(extracted_quote, str) and len(extracted_quote) > 500:
+            extracted_quote = extracted_quote[:500] + "..."
+        if isinstance(rationale, str) and len(rationale) > 500:
+            rationale = rationale[:500] + "..."
+
+        result = {
+            "claim_text": claim_text,
+            "source_url": source_url,
+            "support_level": support_level,
+            "confidence": confidence,
+            "extracted_quote": extracted_quote,
+            "rationale": rationale,
+            "verifier_timestamp": ts.isoformat(),
+            "trace_map_id": trace_map_id,
+            "section": section,
+            "niche_id": niche_id,
+            "semantic_verified": True,
+        }
+        results.append(result)
+
+        # ── Integrity alerts ────────────────────────────────────────────
+        if support_level == "CONTRADICTS":
+            raise_integrity_alert(
+                claim, "CONTRADICTS", source_url,
+                f"Claim actively contradicted by source. "
+                f"Extracted quote: \"{extracted_quote[:200]}\""
+            )
+            alerts_raised += 1
+
+        elif section in CRITICAL_SECTIONS and support_level == "NEUTRAL":
+            raise_integrity_alert(
+                claim, "NEUTRAL", source_url,
+                f"CRITICAL-section claim has no supporting evidence. "
+                f"Rationale: {rationale[:200]}"
+            )
+            alerts_raised += 1
+
+        # Rate-limit protection: 500ms pause every 5 API calls
+        if api_calls > 0 and api_calls % 5 == 0:
+            time.sleep(0.5)
+
+    # ── Track API cost ────────────────────────────────────────────────────
+    if not dry_run and api_calls > 0:
+        track_semantic_cost(api_calls, niche_id)
+
+    # ── Write output ──────────────────────────────────────────────────────
+    output = {
+        "niche_id": niche_id,
+        "total_claims": total,
+        "sampled_claims": sampled_count,
+        "fetched_sources": fetched_count,
+        "api_calls_made": api_calls,
+        "alerts_raised": alerts_raised,
+        "dry_run": dry_run,
+        "verifier_timestamp": ts.isoformat(),
+        "results": results,
+    }
+
+    try:
+        with open(output_path, "w") as f:
+            json.dump(output, f, indent=2)
+        emit_log("INFO", f"Wrote {len(results)} graded results to {output_path}", niche_id)
+    except IOError as e:
+        emit_log("ERROR", f"Failed to write output: {e}", niche_id)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": str(e),
+            "niche_id": niche_id,
+        })
+
+    # ── Summary stats ─────────────────────────────────────────────────────
+    supports = sum(1 for r in results if r.get("support_level") == "SUPPORTS")
+    partial = sum(1 for r in results if r.get("support_level") == "PARTIALLY_SUPPORTS")
+    neutral = sum(1 for r in results if r.get("support_level") == "NEUTRAL")
+    contradicts = sum(1 for r in results if r.get("support_level") == "CONTRADICTS")
+    unavailable = sum(1 for r in results if r.get("support_level") == "SOURCE_UNAVAILABLE")
+    deterministic = sum(1 for r in results if r.get("semantic_verified") is False)
+
+    emit_result(ExitCode.SUCCESS, {
+        "niche_id": niche_id,
+        "total_claims": total,
+        "semantic_checked": sampled_count,
+        "deterministic_only": deterministic,
+        "api_calls": api_calls,
+        "alerts_raised": alerts_raised,
+        "grades": {
+            "SUPPORTS": supports,
+            "PARTIALLY_SUPPORTS": partial,
+            "NEUTRAL": neutral,
+            "CONTRADICTS": contradicts,
+            "SOURCE_UNAVAILABLE": unavailable,
+        },
+        "output_file": repo_relative(output_path),
+    })
+
+
+def repo_relative(path: Path) -> str:
+    """Convert a path to repo-relative form for compact output."""
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+# ─── CLI Entry Point ──────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Semantic Checker — verify claims against source content "
+            "using Claude API. Replaces the deterministic grade engine "
+            "for semantic understanding."
+        )
+    )
+    parser.add_argument(
+        "--niche", "-n",
+        required=True,
+        help="Niche ID (e.g. N-001, N-002)"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help=(
+            "Run without making API calls. Reports what would be checked "
+            "and sampled, but does not call Claude."
+        )
+    )
+    parser.add_argument(
+        "--model", "-m",
+        default=None,
+        help=f"Claude model ID (default: {DEFAULT_MODEL})"
+    )
+    parser.add_argument(
+        "--api-key", "-k",
+        default=None,
+        help=(
+            "Anthropic API key. Falls back to ANTHROPIC_API_KEY "
+            "or CLAUDE_API_KEY env vars."
+        )
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Suppress stderr output (emit_log becomes no-op)"
+    )
+    parser.add_argument(
+        "--agent-mode", "-a",
+        action="store_true",
+        help=(
+            "Agent mode: compact JSON output to stdout, "
+            "no stderr. Implicitly sets --quiet."
+        )
+    )
+    parser.add_argument(
+        "--force-sample",
+        action="store_true",
+        help=(
+            "Override sampling: semantically verify EVERY claim "
+            "regardless of section or hash. Use for small niches "
+            "or audit runs. WARNING: bypasses cost control."
+        )
+    )
+
+    args = parser.parse_args()
+
+    # Apply quiet/agent mode
+    if args.quiet:
+        from lib.pipeline_ops import set_quiet_mode
+        set_quiet_mode(True)
+    if args.agent_mode:
+        from lib.pipeline_ops import set_agent_mode
+        set_agent_mode(True)
+
+    # If force-sample is set, patch the sampling function globally
+    if args.force_sample:
+        global should_semantic_check
+        original_check = should_semantic_check  # noqa: F841 — keep reference
+
+        def should_semantic_check(_claim: dict) -> bool:  # type: ignore
+            return True
+
+    # Resolve API key
+    api_key = (
+        args.api_key
+        or os.environ.get("ANTHROPIC_API_KEY")
+        or os.environ.get("CLAUDE_API_KEY")
+    )
+    if not api_key:
+        emit_log(
+            "ERROR",
+            "No Anthropic API key found. "
+            "Set ANTHROPIC_API_KEY env var or pass --api-key."
+        )
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": (
+                "No API key provided. "
+                "Set ANTHROPIC_API_KEY env var or use --api-key"
+            ),
+        })
+
+    process_niche(
+        niche_id=args.niche,
+        api_key=api_key,
+        dry_run=args.dry_run,
+        force_model=args.model,
+        agent_mode=args.agent_mode,
+    )
+
+
+if __name__ == "__main__":
+    main()

@@ -31,6 +31,7 @@ Design principles (Google SRE):
 import sys
 import re
 from pathlib import Path
+from datetime import timedelta
 from typing import Dict, Any, List, Optional, Tuple, Set, NamedTuple
 
 # ─── Ensure lib/ is importable ──────────────────────────────────────────────────
@@ -476,9 +477,14 @@ def compute_source_count_staleness(
                 f"fresh_until={meta['fresh_until'] or '?'}]",
             )
 
+    # ── Thresholds for expiry proximity ──────────────────────────────────────
+    EXPIRING_SOON_HOURS = 24  # Flag as WARNING if expiry within 24h
+
     # ── Check each source for staleness ─────────────────────────────────────
     now = now_utc()
     stale_sources: List[Dict[str, Any]] = []
+    expiring_soon_count = 0
+    expired_count = 0
 
     for src_file, src_meta in unique_source_files.items():
         resolved_path = resolve_source_file(src_file, niche_id)
@@ -559,20 +565,39 @@ def compute_source_count_staleness(
 
         max_age = get_sla_max_age(data_type)
         actual_age = days_between(fetch_dt, now)
-        is_stale = now >= fresh_until_dt
+        is_expired = now >= fresh_until_dt
+        is_expiring_soon = (not is_expired
+                            and now >= (fresh_until_dt - timedelta(hours=EXPIRING_SOON_HOURS)))
+        is_stale = is_expired or is_expiring_soon
 
-        if is_stale:
+        if is_expired:
             resolution = "STALE"
-            resolution_detail = f"Actual age: {actual_age}d, SLA max: {max_age}d"
+            resolution_detail = (
+                f"EXPIRED. Actual age: {actual_age}d, "
+                f"SLA max: {max_age}d, "
+                f"expired since: {fresh_until_dt.strftime('%Y-%m-%d')}"
+            )
+            expired_count += 1
 
             # Check if re-fetch was attempted and failed
             if src_meta.get("re_fetch_attempted") and src_meta.get("re_fetch_success") is False:
                 resolution = "STALE_UNRECOVERABLE"
                 resolution_detail = (
-                    f"Re-fetch attempted and failed. "
+                    f"EXPIRED and re-fetch failed. "
                     f"Actual age: {actual_age}d, SLA max: {max_age}d"
                 )
 
+        elif is_expiring_soon:
+            resolution = "EXPIRING_SOON"
+            hours_left = int((fresh_until_dt - now).total_seconds() / 3600)
+            resolution_detail = (
+                f"EXPIRING_SOON. Actual age: {actual_age}d, "
+                f"SLA max: {max_age}d, "
+                f"expires in {hours_left}h"
+            )
+            expiring_soon_count += 1
+
+        if is_expired or is_expiring_soon:
             stale_entry = _build_stale_entry(
                 src_file=src_file,
                 src_meta=src_meta,
@@ -586,19 +611,20 @@ def compute_source_count_staleness(
                 resolution_detail=resolution_detail,
             )
             stale_sources.append(stale_entry)
-            emit_log(
-                "WARNING",
-                f"STALE: {src_file} "
-                f"(actual: {actual_age}d, SLA: {max_age}d, "
-                f"resolution: {resolution})",
+            log_level = "WARNING"
+            log_msg = (
+                f"{resolution}: {src_file} "
+                f"(actual: {actual_age}d, SLA: {max_age}d)"
             )
+            emit_log(log_level, log_msg)
 
     stale_count = len(stale_sources)
     stale_ratio = round(stale_count / total_unique_sources, 4) if total_unique_sources > 0 else 0.0
 
     emit_log(
         "INFO",
-        f"Staleness: {stale_count}/{total_unique_sources} sources stale "
+        f"Staleness: {expired_count} expired, {expiring_soon_count} expiring soon, "
+        f"{stale_count}/{total_unique_sources} total "
         f"(ratio: {stale_ratio})",
     )
 
@@ -624,6 +650,14 @@ def _build_stale_entry(
     resolution_detail: str = "",
 ) -> Dict[str, Any]:
     """Build a stale entry dict with all required fields."""
+    # Categorise expiry proximity for summary reporting
+    if resolution in ("STALE", "STALE_UNRECOVERABLE", "ORPHAN", "UNCHECKABLE"):
+        expiry_severity = "FAIL"
+    elif resolution == "EXPIRING_SOON":
+        expiry_severity = "WARNING"
+    else:
+        expiry_severity = "PASS"
+
     return {
         "source_file": src_file,
         "data_type": data_type,
@@ -636,6 +670,7 @@ def _build_stale_entry(
         "re_fetch_priority": get_re_fetch_priority(data_type),
         "resolution": resolution,
         "resolution_detail": resolution_detail,
+        "expiry_severity": expiry_severity,
     }
 
 
@@ -1192,7 +1227,14 @@ def main() -> None:
 
     # Build stale_details (stripped of internal fields, ready for public output)
     stale_details = []
+    expire_fail_count = 0
+    expire_warning_count = 0
     for entry in stale_sources:
+        sev = entry.get("expiry_severity", "FAIL")
+        if sev == "FAIL":
+            expire_fail_count += 1
+        elif sev == "WARNING":
+            expire_warning_count += 1
         stale_details.append({
             "source_file": entry["source_file"],
             "data_type": entry["data_type"],
@@ -1203,6 +1245,7 @@ def main() -> None:
             "actual_age_days": entry.get("actual_age_days"),
             "staleness_action": entry.get("staleness_action", "RE_FETCH"),
             "resolution": entry.get("resolution", "STALE"),
+            "expiry_severity": sev,
             "claims_referencing": entry.get("claims_referencing", 0),
             "claim_ratio": entry.get("claim_ratio", 0.0),
         })
@@ -1223,6 +1266,8 @@ def main() -> None:
         "niche_id": niche_id,
         "total_sources": total_unique_sources,
         "stale_sources": stale_count,
+        "expired_sources": expire_fail_count,
+        "expiring_soon_sources": expire_warning_count,
         "stale_ratio": stale_ratio,
         "claim_weighted_stale_ratio": claim_weighted_stale_ratio,
         "claim_weighted_blocked": blocking_source is not None,

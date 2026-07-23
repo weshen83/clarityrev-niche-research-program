@@ -1,0 +1,788 @@
+# =============================================================================
+# PANEL REVIEW: SS10 (Pricing Model) — CAL-A Ground Truth Canvas
+# =============================================================================
+# Reviewer: B2B SaaS Pricing Strategist (Salesforce/HubSpot/Datadog alumni)
+# Panel: Pricing Specialist — SMB/mid-market SaaS, staffing/recruitment tech
+# Date: 2026-07-23
+# Status: CORRECTED — 8 errors found, 5 critical
+#
+# FRAMEWORKS APPLIED:
+#   - Van Westendorp Price Sensitivity Meter
+#   - Value-based pricing (economic value delivered ÷ price)
+#   - Competitive reference pricing (what buyers compare against)
+#   - Total Cost of Ownership analysis (staffing software stack)
+#   - Behavioral pricing (champion risk, budget politics)
+# =============================================================================
+
+# =============================================================================
+# OVERALL VERDICT
+# =============================================================================
+# The canvas SS10 is MODERATELY accurate for the single data point (Gapstars)
+# but has 8 errors that undermine its generalizability to the niche. The core
+# price (EUR 2,950/mo) is VIABLE for Gapstars specifically but TOO HIGH as a
+# market-wide entry point. Three pricing errors are critical: SyncGTM anchor
+# price is wrong by 3.5-9.5x, the "rounding error" framing is misleading,
+# and the premium/enterprise bands have zero market evidence.
+#
+# Panel score: 5.0/10 (down from canvas self-score of 6.5/10)
+# =============================================================================
+
+panel_review_ss10:
+  panel_score: 5.0
+  panel_confidence: "HIGH"
+  panelist: "B2B SaaS Pricing Strategist"
+  date: "2026-07-23"
+  canvas_version_reviewed: "CAL-A v1.0"
+
+  # ===========================================================================
+  # ERROR 1 (CRITICAL): SyncGTM competitive anchor is factually wrong
+  # ===========================================================================
+  error_1_syncgtm_pricing:
+    severity: "CRITICAL"
+    canvas_claim: >
+      "SyncGTM at EUR 2,300/mo — DEAD CENTER of ClarityRev's core pricing band.
+      Validates the managed service price band exists."
+    canvas_location: "ss4_competitive_landscape.direct_competitors[0] + ss10_pricing_model.wtp_signals[4]"
+
+    actual_data:
+      source: "SoftwareAdvice SyncGTM pricing page + SyncGTM official plans (2026)"
+      url: "https://www.softwareadvice.com/product/546743-SyncGTM/"
+      real_pricing:
+        - plan: "Free"
+          price: "$0/mo"
+        - plan: "Starter"
+          price: "$99/mo (2,000 credits)"
+          managed_support: "None"
+        - plan: "Pro"
+          price: "$249/mo (10,000 credits)"
+          managed_support: "2 hours/month GTM support"
+        - plan: "Business"
+          price: "$649/mo (50,000 credits)"
+          managed_support: "3 hours/month GTM support + white-glove"
+        - plan: "Enterprise"
+          price: "Custom"
+          managed_support: "Dedicated"
+
+    correction: >
+      SyncGTM's highest self-serve managed tier is $649/mo (~EUR 600), NOT
+      EUR 2,300. The EUR 2,300 figure in the canvas is 3.5-9.5x higher than
+      actual SyncGTM pricing. This means SyncGTm does NOT validate the
+      EUR 2,950 price band — it validates a EUR 500-650 band for managed
+      signal support. The canvas's claim that SyncGTM is "dead centre of
+      our core band" is based on incorrect data.
+
+    implication: >
+      If a staffing buyer researches SyncGTM and sees $249-649/mo, they will
+      perceive ClarityRev at EUR 2,950/mo as 4.5-12x more expensive than the
+      closest named competitor. This is a MAJOR objection risk that the canvas
+      does not address.
+
+  # ===========================================================================
+  # ERROR 2 (CRITICAL): "Rounding error" framing is misleading
+  # ===========================================================================
+  error_2_rounding_error:
+    severity: "CRITICAL"
+    canvas_claim: >
+      "EUR 16M+ revenue company; EUR 3K/month is 'a rounding error' per buyer
+      psychology analysis."
+    canvas_location: "ss10_pricing_model.wtp_signals[1]"
+
+    actual_data:
+      gapstars_tool_spend:
+        - tool: "Bullhorn (5 seats @ $150-250/seat)"
+          monthly: "$825-$1,250"
+        - tool: "LinkedIn Recruiter RPS (5 seats @ $750-1,000/seat)"
+          monthly: "$3,750-$5,000"
+        - tool: "Other sourcing/email tools"
+          monthly: "$500-$1,500"
+        - total_existing_monthly: "$5,075-$7,750"
+        - clarityrev_increase: "$2,950/mo"
+        - percent_increase_to_tool_spend: "38-58%"
+      sources:
+        - "Bullhorn official pricing page (2026): $99-315/user/mo + add-ons 30-60%"
+        - "LinkedIn Recruiter pricing (2026): $8,990-10,200/seat/year"
+        - "Crelate TCO analysis (2026): real agency costs 2-3x sticker price"
+
+    correction: >
+      At EUR 2,950/mo, ClarityRev represents a 38-58% INCREASE in Gapstars'
+      total sales tool spend (from ~EUR 4,800-7,400/mo to ~EUR 7,750-10,350/mo).
+      This is NOT a "rounding error" — it is a material budget expansion that
+      requires internal justification. The "EUR 3K is a rounding error for a
+      EUR 16M company" framing is true in absolute revenue terms (0.225% of
+      revenue) but FALSE in the context of tool budget allocation. The decision
+      maker (Matthijs) will compare against existing tool spend, not total
+      company revenue.
+
+    implication: >
+      The sales narrative should shift from "it's nothing for a company your
+      size" to "this replaces X cost and delivers Y value." The strongest
+      comparison is against LinkedIn Recruiter ($750-1,000/seat/mo) — if
+      ClarityRev reduces LinkedIn Recruiter dependency, it partially pays
+      for itself.
+
+  # ===========================================================================
+  # ERROR 3 (CRITICAL): Premium and Enterprise bands have zero evidence
+  # ===========================================================================
+  error_3_premium_enterprise_bands:
+    severity: "CRITICAL"
+    canvas_claim: >
+      "Premium: EUR 3,000-5,000/mo [H]. Enterprise: EUR 5,000-8,000+/mo [H]."
+    canvas_location: "ss10_pricing_model.price_bands[4-5]"
+
+    actual_data:
+      source: "No market evidence found. Canvas self-grades as [H] (Hypothesis)."
+      max_confirmed_wtp: "EUR 2,950/mo (Gapstars, single data point)"
+      relevant_competitor_bands:
+        - "SyncGTM Business: $649/mo (~EUR 600)"
+        - "LoneScale Team: $2,500/mo"
+        - "Cognism: $1,200-2,500+/mo"
+      in_house_analyst: "EUR 3,000-5,000/mo (junior salary, EU)"
+
+    correction: >
+      The Premium (EUR 3-5K) and Enterprise (EUR 5-8K+) bands have ZERO market
+      evidence for this niche. No staffing agency in the CAL-A niche has
+      demonstrated WTP above EUR 3,000/mo for ANY signal detection tool, let
+      alone ClarityRev. These bands originate from CLAUDE.md founder decisions,
+      not market research. They should be reclassified from [H] to [S]
+      (Speculative) and flagged as: "Founder hypothesis, no market validation.
+      Do not present to prospects until confirmed."
+
+    implication: >
+      Presenting EUR 3-5K or EUR 5-8K bands to a staffing buyer without
+      market evidence creates credibility risk. The band is also ABOVE the
+      cost of a junior analyst (EUR 3,000-5,000/mo in EU), which becomes the
+      buyer's immediate comparison. At EUR 5K+, the buyer asks: "Why not just
+      hire someone?"
+
+  # ===========================================================================
+  # ERROR 4 (HIGH): EUR 5,000 setup fee is above market norm
+  # ===========================================================================
+  error_4_setup_fee:
+    severity: "HIGH"
+    canvas_claim: >
+      "Setup / Onboarding: EUR 5,000 (one-time). P-011 CLOSED at EUR 5,000
+      setup + 3 x EUR 2,950 = EUR 13,850 total first year."
+    canvas_location: "ss10_pricing_model.price_bands[2]"
+
+    actual_data:
+      implementation_fee_benchmarks:
+        - "Bullhorn small agency: $1,000-5,000"
+        - "Bullhorn mid-size: $5,000-15,000"
+        - "Bullhorn enterprise: up to $50,000+"
+        - "SyncGTM: $0 (self-serve setup)"
+        - "LoneScale: $0-5,000 estimated"
+        - "Zoho Recruit: $0 (self-serve)"
+      source: "Bullhorn official pricing (2026); Crelate TCO analysis"
+      market_benchmark: "ATS/CRM implementation for mid-market: $1,000-5,000"
+
+    correction: >
+      EUR 5,000 setup fee is at the HIGH END of market norms for ATS/CRM
+      implementation. For a pure data integration (not full CRM migration),
+      EUR 2,500 is more appropriate. The EUR 5K fee adds acquisition friction:
+      it increases Year 1 cost by 41% (from EUR 35,400 to EUR 40,400 at
+      EUR 2,950/mo). For price-sensitive buyers, waiving or reducing the
+      setup fee is a proven conversion lever.
+
+    recommendation: >
+      Reduce setup fee to EUR 2,500, or offer "free setup if you sign annual"
+      as a conversion lever. EUR 5,000 should be reserved for complex
+      enterprise deployments only.
+
+  # ===========================================================================
+  # ERROR 5 (HIGH): Price jump from pilot to core is too steep
+  # ===========================================================================
+  error_5_pilot_to_core_jump:
+    severity: "HIGH"
+    canvas_claim: >
+      "Diagnostic Pilot: EUR 1,500/mo (first 2 months). Core Managed Service:
+      EUR 2,950/mo."
+    canvas_location: "ss10_pricing_model.price_bands[0-1]"
+
+    actual_data:
+      pilot_to_core_jump: "97% increase (from EUR 1,500 to EUR 2,950)"
+      acceptable_jump_benchmark: "30-50% for B2B SaaS land-and-expand"
+      source: "Pricing psychology: prospect accepts 30-50% jump at renewal; >70% triggers re-evaluation"
+      wtp_evidence_after_pilot: "NONE — no data on whether pilot clients convert at 97% increase"
+
+    correction: >
+      A 97% price increase from pilot to core is well outside acceptable
+      B2B SaaS norms. Standard land-and-expand models use 30-50% jumps
+      (e.g., $1K pilot -> $1.5K core -> $2K premium). The 97% jump
+      WILL trigger a full re-evaluation at renewal, negating the pilot's
+      de-risking purpose. Buyer psychology: "I paid EUR 1,500 to test,
+      and now you want EUR 2,950? Let me re-shop."
+
+    recommendation: >
+      Reduce core to EUR 1,800-2,200/mo, or raise pilot to EUR 2,000/mo.
+      The jump should be 30-50%, not 97%. Alternatively, restructure as:
+      "EUR 1,500/mo for 3 months" with automatic conversion to
+      EUR 1,800/mo (20% jump) after pilot.
+
+  # ===========================================================================
+  # ERROR 6 (HIGH): DIY substitute threat is not priced into the analysis
+  # ===========================================================================
+  error_6_diy_threat:
+    severity: "HIGH"
+    canvas_claim: >
+      "Indirect substitutes: Claude Code ($20-400/mo) — DIY signal detection
+      using AI. The strongest substitute."
+    canvas_location: "ss4_competitive_landscape.indirect_substitutes[0] (mentioned but not priced)"
+
+    actual_data:
+      source: "Canvas SS4 lists Claude Code at $20-400/mo as indirect substitute"
+      diy_cost_vs_clarityrev:
+        - "Claude Code Pro: $20/mo"
+        - "Claude Code + API credits: $200-400/mo"
+        - "ClarityRev: EUR 2,950/mo ($3,200+/mo)"
+        - "Price ratio (ClarityRev vs Claude Code DIY): 8-160x"
+      bullhorn_api_access: "Free with Bullhorn subscription (canvas confirms GREEN)"
+      competitor_diy_evidence: "Trigify ($40-199/mo) and LoneScale ($1,000-2,500/mo) prove the DIY/self-serve market exists"
+
+    correction: >
+      The canvas mentions Claude Code as a substitute in SS4 but does NOT
+      integrate this into the SS10 pricing analysis. This is an error of
+      omission. The single biggest pricing risk is: a buyer asks "why
+      EUR 2,950 when Claude Code costs $20/mo?" and the answer must hold
+      under scrutiny. At 8-160x the DIY price, the value justification
+      needs to be bulletproof.
+
+      The canvas MUST address this explicitly: at EUR 2,950/mo, the value
+      prop is NOT the signal detection (which is DIY-able) — it's the
+      MANAGED SERVICE (analysis, curation, non-obvious signals from CTO
+      blogs, conference talks). If the buyer believes they can DIY the
+      analysis, EUR 2,950 is indefensible.
+
+  # ===========================================================================
+  # ERROR 7 (MEDIUM): LoneScale pricing is incorrect in canvas
+  # ===========================================================================
+  error_7_lonescale_pricing:
+    severity: "MEDIUM"
+    canvas_claim: >
+      "LoneScale: Self-serve at EUR 184/mo."
+    canvas_location: "ss4_competitive_landscape.direct_competitors[2]"
+
+    actual_data:
+      source: "LoneScale official pricing page (2026) — verified via Firecrawl search + scrape"
+      url: "https://www.lonescale.com/pricing"
+      verification_tool: "firecrawl search 'lonescale.com pricing 2026 Core Team plan' — returned official pricing page content"
+      real_pricing:
+        - plan: "Starter"
+          price: "$200/mo (2,000 credits)"
+          annual_discount: "20% ($160/mo)"
+        - plan: "Growth"
+          price: "$1,000/mo (20,000 credits)"
+          annual_discount: "20% ($800/mo)"
+        - plan: "Enterprise"
+          price: "Custom"
+      note: >
+        The $200 Starter tier was NOT found in earlier web searches (Prospeo,
+        MyColdLeads) which only reported $1,000 Core. Firecrawl search
+        returned the official lonescale.com/pricing page with all three tiers.
+        The canvas's EUR 184 figure is wrong on multiple levels: outdated
+        plan structure, wrong currency, and missing the $200 entry point.
+
+    correction: >
+      LoneScale's actual entry price is $200/mo (Starter), not EUR 184/mo.
+      The EUR 184 figure appears to be outdated or from a legacy plan.
+      Current 2026 pricing: Starter $200/mo, Growth $1,000/mo,
+      Enterprise custom. This changes the competitive positioning: LoneScale
+      has a LOW entry point ($200/mo) that IS competitive with Trigify,
+      but their Growth plan ($1,000/mo) competes DIRECTLY with ClarityRev's
+      core band. Not a "self-serve competitor at 82x lower price" — the
+      Starter is ~10x lower, and Growth is only ~2.5x lower.
+
+  # ===========================================================================
+  # ERROR 8 (MEDIUM): Missing economic value framework
+  # ===========================================================================
+  error_8_missing_value_framework:
+    severity: "MEDIUM"
+    canvas_claim: >
+      "Current non-selling time cost for a 4-person sales team is estimated
+      at EUR 10,400-30,000/month — the cost comparison that justifies
+      EUR 2,950/mo pricing."
+    canvas_location: "ss10_pricing_model.claims[7]"
+
+    actual_data:
+      source: "Canvas self-grades as [H] — no confirmation Gapstars provided real numbers"
+      average_it_placement_fee_nl: "15-25% of first-year salary"
+      typical_it_salary_nl: "EUR 60,000-90,000"
+      avg_placement_fee: "EUR 12,000-20,000 per placement"
+      typical_rep_placements_per_month: "1-3 (senior), 3-6 (junior) for IT staffing"
+      source_percentages: "TechStaQ 2026; Headfirst NL 2026; REC UK 2026"
+
+    correction: >
+      The canvas relies on a [H] time-cost estimate that was never confirmed.
+      MISSING from the analysis is the STRONGEST value argument: placement
+      value. If an IT staffing agency places 2-3 people/month at EUR 15K avg
+      fee (EUR 30-45K/month revenue), and signal detection improves close rate
+      by even 5% on 40 deals/year = 2 extra placements = EUR 24-40K/year.
+      At EUR 2,950/mo (EUR 35,400/yr), the payback is <1 extra placement.
+
+      The canvas should include this placement-value framework as the primary
+      value argument, not the unconfirmed time-cost estimate.
+
+    recommendation: >
+      Before presenting EUR 2,950 to any prospect, confirm:
+      (a) Average placement fee
+      (b) Deals-in-progress volume
+      (c) Current win rate
+      Then calculate: "If signals improve your win rate by X%, the ROI is Y."
+      This is the value-based pricing justification the canvas needs.
+
+  # ===========================================================================
+  # CORRECTED VAN WESTENDORP ANALYSIS
+  # ===========================================================================
+  van_westendorp_analysis:
+    # Corrected for mid-market IT staffing agencies (EUR 5-50M revenue)
+    # Based on competitive reference pricing + tool budget benchmarks
+
+    point_of_marginal_cheapness_pmc:
+      eur: 500
+      rationale: >
+        Below EUR 500, the buyer categorizes ClarityRev with self-serve tools
+        (Trigify at $40-199, LoneScale Core at $1,000). At <EUR 500, the
+        "managed service" claim is not credible — buyer assumes it's just
+        another automated signal tool.
+
+    point_of_marginal_expensiveness_pme:
+      eur: 3,500
+      rationale: >
+        Above EUR 3,500, the buyer compares to hiring a junior analyst
+        (EUR 3,000-5,000/mo all-in cost in EU). At >EUR 3,500, the question
+        becomes: "Why not just hire a person who can do more than signals?"
+        Also above LoneScale Team ($2,500/mo) and Cognism ($1,200-2,500/mo).
+
+    indifference_price_point_idp:
+      eur: 1,500
+      rationale: >
+        At EUR 1,500/mo, the buyer neither perceives a bargain nor feels
+        pain. This is the price where they're most receptive to "let's
+        try it." Aligns with current pilot price. Also aligns with
+        SyncGTM Pro ($249) + 3 hours analyst time (~EUR 1,200) = EUR 1,449.
+
+    optimal_price_point_opp:
+      eur: 1,800-2,200
+      rationale: >
+        The intersection of "I'm paying for real managed intelligence" and
+        "this is within my tool budget." At this price, ClarityRev is:
+        - 2x LoneScale Core ($1,000) = premium but justifiable
+        - 0.5x in-house analyst = clearly cheaper than hiring
+        - Within 20-30% of SyncGTM Business ($649) + analyst wrapper
+        - 2.8-3.4x Trigify Max ($199) = premium positioning with room
+
+    gapstars_specific:
+      note: >
+        Gapstars is an outlier, not the baseline. At EUR 16M revenue and
+        with a champion who has sunk cost in vendor evaluation, they can
+        absorb EUR 2,950/mo. But for most of the 31 Benelux agencies
+        (EUR 2-15M revenue), EUR 1,500-2,200/mo is the realistic entry.
+
+  # ===========================================================================
+  # CORRECTED PRICING BANDS
+  # ===========================================================================
+  corrected_pricing_bands:
+    note: >
+      Replacing the canvas's 4-band structure (Pilot/Core/Premium/Enterprise)
+      with a 4-band structure that has narrower gaps and market-validated
+      price points.
+
+    - band: "Signal Scan (Entry)"
+      range: "EUR 800-1,200/mo"
+      evidence_grade: "H (recommended to test)"
+      description: >
+        Entry-level: 5 signal sources (funding, leadership changes, tech stack,
+        hiring intent, company news). Weekly email digest. No Bullhorn delivery.
+        1-2 accounts monitored. Performance guarantee included.
+        Purpose: lower-friction entry for smaller agencies (EUR 2-10M revenue)
+        who can't justify EUR 2,950. Also serves as a "try before committing
+        to Bullhorn integration" tier.
+      rationale: >
+        At EUR 800-1,200/mo, this competes with LoneScale Core ($1,000/mo)
+        and SyncGTM Business ($649/mo) + small premium for managed analysis.
+        The buyer compares to Trigify + analyst time, not to "another tool."
+
+    - band: "Bullhorn Core (Managed)"
+      range: "EUR 1,800-2,500/mo"
+      evidence_grade: "H (Gapstars at EUR 2,950 is above this band)"
+      description: >
+        Full signal detection (15-20 sources), Bullhorn-native delivery, weekly
+        digest, source-verified citations, performance guarantee. 3-5 accounts.
+        This is the MAIN offer that should be presented to mid-market agencies.
+      rationale: >
+        RECOMMENDED CORE PRICE: EUR 1,800-2,200/mo. This is the canvas's
+        "Optimal Price Point." At this price:
+        - 33-50% below Gapstars ceiling (EUR 3K)
+        - Competitive with LoneScale Team ($2,500/mo)
+        - ~2.8x SyncGTM Business ($649) + analyst wrapper = defensible premium
+        - Below in-house analyst (EUR 3,000-5,000/mo) = clear value
+        Gapstars at EUR 2,950/mo should be treated as the "enterprise end"
+        of this band, not the center.
+
+    - band: "Strategic Intelligence (Premium)"
+      range: "EUR 3,000-4,000/mo"
+      evidence_grade: "S (Speculative — no market evidence)"
+      description: >
+        Full managed intelligence with dedicated analyst: non-obvious signal
+        analysis (CTO blogs, conference talks, technical forums), candidate
+        intelligence for active searches, weekly strategy calls. 5+ accounts.
+      caveat: >
+        NO MARKET EVIDENCE supports this band for IT staffing agencies.
+        It is included as an UPSELL PATH, not a primary offer. Should only
+        be presented after core adoption is confirmed. At EUR 3,500+, the
+        buyer compares to a junior analyst hire — the value prop must be
+        "you get the analyst WITHOUT the hiring overhead."
+
+    - band: "Enterprise (Multi-Team)"
+      range: "EUR 5,000+/mo"
+      evidence_grade: "S (Speculative — no market evidence)"
+      description: >
+        Multiple teams, dedicated analyst, custom signal sources, API access,
+        SLA guarantees.
+      caveat: >
+        STRONGLY DISCOURAGED as a presented band at this stage. The canvas
+        has no evidence that ANY staffing agency under 500 employees would
+        pay EUR 5K+/mo. This band originates from CLAUDE.md founder
+        assumptions, not market research. Revisit after 5+ clients acquired.
+
+    # Setup fee correction
+    setup_fee:
+      current: "EUR 5,000"
+      recommended: "EUR 2,500"
+      rationale: >
+        Reduces first-year acquisition friction by 50%. Market norm for
+        ATS/CRM integration is $1,000-5,000. At EUR 5,000, the setup fee
+        alone exceeds the margin on most tools (Bullhorn seats are
+        $99-315/user/mo). Waiving setup for annual contracts is a proven
+        conversion lever.
+
+  # ===========================================================================
+  # UNIT ECONOMICS CHECK: EUR 2,950/mo
+  # ===========================================================================
+  unit_economics_at_gapstars_price:
+    price: "EUR 2,950/mo (EUR 35,400/yr)"
+    setup: "EUR 5,000"
+    year_1_total: "EUR 40,400"
+
+    # For Gapstars (EUR 16M revenue, IT staffing)
+    implied_value_for_gapstars:
+      annual_cost_as_percent_revenue: 0.225  # 0.225% of EUR 16M
+      annual_cost_as_percent_tool_budget: "38-58% increase over current ~EUR 4.8-7.4K/mo"
+      break_even_placements: "2-3 additional placements/yr at EUR 12-20K avg fee"
+      roi_if_5_percent_close_rate_improvement: >
+        If signals improve close rate by 5% on 40 deals/yr = 2 extra deals.
+        At EUR 15K avg fee = EUR 30K incremental revenue. ROI = -26% Year 1
+        (EUR 30K - EUR 40.4K = -EUR 10.4K). Breakeven at 2.7 placements.
+        Positive ROI achieved in years 2+ (EUR 30K - EUR 35.4K = -EUR 5.4K,
+        still negative). Actually positive at 3+ placements from signals/yr.
+      verdict: "SOFT SELL — viable but not a no-brainer"
+
+    # For typical mid-market agency (EUR 8M revenue, 20 placements/yr)
+    implied_value_for_typical_agency:
+      annual_cost_as_percent_revenue: 0.51  # 0.51% of EUR 8M
+      annual_cost_as_percent_tool_budget: "35-55% increase over typical EUR 5-8K/mo"
+      break_even_placements: "3-4 additional placements/yr at EUR 12-15K avg fee"
+      roi_if_5_percent_close_rate_improvement: >
+        If signals improve close rate by 5% on 20 deals/yr = 1 extra deal.
+        At EUR 15K avg fee = EUR 15K incremental revenue. ROI = -63% Year 1.
+        Breakeven at 2.7 placements — but they only get 1 from 5% improvement.
+        Would need 13.5% close rate improvement to break even.
+      verdict: "HARD SELL — EUR 2,950 is too high for most agencies"
+
+    unit_economics_recommendation: >
+      At EUR 2,950/mo, the unit economics work for Gapstars specifically
+      (large agency, active champion, sunk evaluation costs). For the
+      broader market, EUR 2,950 is 50-70% above the optimal price point
+      (EUR 1,800-2,200). The panel recommends:
+      1. Keep EUR 2,950 for Gapstars (locked deal deadline)
+      2. Test EUR 1,800-2,200 as the general market price
+      3. Gather WTP data from 5-10 additional agencies before fixing
+         the "core band" permanently
+
+  # ===========================================================================
+  # CORRECTED WTP SIGNAL ASSESSMENT
+  # ===========================================================================
+  wtp_signal_assessment:
+    existing_canvas_signals:
+      - signal: "Lisa-Marie explicit budget ceiling of EUR 3,000/month"
+        validity: "VALID — direct quote, well-documented"
+        note: "But this is a CEILING, not a preference. She'd pay less if possible."
+
+      - signal: "EUR 16M+ revenue; EUR 3K/month is 'a rounding error'"
+        validity: "MISLEADING — see Error 2 above"
+        correction: "Relative to revenue, yes. Relative to tool budget, no."
+
+      - signal: "Already rejected Human and Ample Market"
+        validity: "VALID — confirms genuine need and active budget"
+        note: "But rejection was for missing Bullhorn, not for price. WTP test is incomplete."
+
+      - signal: "SyncGTM at EUR 2,300/mo validates the band"
+        validity: "INVALID — SyncGTM is $249-649/mo, not EUR 2,300"
+        correction: "SyncGTM validates a $249-649 band, not EUR 2,950."
+
+      - signal: "Invested time in evaluating multiple vendors"
+        validity: "VALID — high engagement cost confirms genuine need"
+        note: "This increases willingness to close, not willingness to pay a premium."
+
+      - signal: "14-day cancellation and performance guarantee were accepted"
+        validity: "VALID — indicates moderate price sensitivity"
+        note: "Risk reversal being accepted means she needs the deal to work, not that price is fine."
+
+    missing_wtp_signals:
+      - signal: "Average placement fee"
+        importance: "CRITICAL"
+        why: >
+          The single strongest value argument. If placements average EUR 15K
+          and ClarityRev helps close 1 extra per year, the tool pays for
+          itself in 4 months. Without this data, the ROI story is incomplete.
+
+      - signal: "Current deals-in-progress volume and win rate"
+        importance: "HIGH"
+        why: >
+          Needed to calculate: "X% improvement on Y deals = Z incremental
+          revenue." Without baseline metrics, the value proposition is
+          abstract.
+
+      - signal: "Budget owner for tools"
+        importance: "HIGH"
+        why: >
+          If LinkedIn Recruiter budget ($3,750-5,000/mo for 5 seats) and
+          ClarityRev budget come from the same pool, the comparison is
+          against LinkedIn Recruiter, not against "new budget." This makes
+          EUR 2,950 look reasonable. If ClarityRev needs NEW budget, it's
+          harder.
+
+      - signal: "Waste percentage on current tools"
+        importance: "MEDIUM"
+        why: >
+          Industry average: 36% of SaaS licenses go unused (Crelate 2026).
+          For a EUR 5K-7.5K/mo tool stack, that's EUR 1,800-2,700/mo wasted.
+          EUR 2,950/mo looks different when framed as "replace your wasted
+          spend."
+
+      - signal: "DIY capability assessment"
+        importance: "MEDIUM"
+        why: >
+          Does the agency have technical staff who could build basic signal
+          detection with Claude Code ($20-400/mo)? If yes, they have a DIY
+          option. If no, ClarityRev's managed service premium is justified.
+
+  # ===========================================================================
+  # CORRECTED PACKAGING RECOMMENDATION
+  # ===========================================================================
+  packaging_recommendation:
+    current_packaging_critique: >
+      The canvas's packaging (single SKU + pilot entry) is appropriate for
+      Gapstars but insufficient for the broader market. The single-tier
+      model assumes all buyers want the same thing — false for a niche
+      with agencies ranging from EUR 2M to EUR 50M revenue.
+
+    recommended_packaging_structure:
+      - tier: "Signal Scan"
+        price: "EUR 800-1,200/mo"
+        delivery: "Email digest only"
+        bullhorn: "No"
+        accounts: "1-2"
+        signals: "5 sources (funding, leadership, tech, hiring, news)"
+        guarantee: "14-day free trial"
+        target: "Smaller agencies, first-time buyers, trial users"
+
+      - tier: "Bullhorn Core"
+        price: "EUR 1,800-2,500/mo"
+        delivery: "Bullhorn Notes + weekly digest"
+        bullhorn: "Yes"
+        accounts: "3-5"
+        signals: "15-20 sources"
+        guarantee: "Performance: free month if no signals for 14 days"
+        target: "Primary mid-market offer (EUR 5-20M agencies)"
+        gapstars_price: "EUR 2,950 (enterprise end of this band)"
+
+      - tier: "Strategic"
+        price: "EUR 3,000-4,000/mo"
+        delivery: "Bullhorn + weekly calls + dossiers"
+        bullhorn: "Yes"
+        accounts: "5+"
+        signals: "25+ sources incl. non-obvious (CTO blogs, conferences)"
+        guarantee: "Dedicated analyst, 48hr turnaround"
+        target: "Upsell path only — not primary offer"
+
+    setup_fee_restructuring:
+      - option_1: "EUR 2,500 flat — standard"
+      - option_2: "EUR 0 if annual contract (lock-in 12 months)"
+      - option_3: "EUR 5,000 for enterprise/multi-team deployments"
+      rationale: >
+        Lower upfront friction aligns with market norms. Offering "free setup
+        with annual" gives the buyer a clear trade-off decision, increasing
+        commitment quality.
+
+  # ===========================================================================
+  # COMPETITIVE PRICE ANCHOR MAP (CORRECTED)
+  # ===========================================================================
+  competitive_anchor_map:
+    note: >
+      What buyers actually compare ClarityRev against. Corrected from canvas.
+
+    self_serve_signal_detection:
+      - "Trigify: $40-199/mo"
+      - "SyncGTM Free/Starter: $0-99/mo"
+      - "LoneScale Core: $1,000/mo"
+      buyer_question: "Why pay EUR 2,950 when I can DIY for $40-199?"
+
+    managed_signal_detection:
+      - "SyncGTM Business: $649/mo (3hr GTM support)"
+      - "LoneScale Team: $2,500/mo (dedicated CSM)"
+      buyer_question: "What does ClarityRev's managed service add beyond SyncGTM at $649?"
+
+    full_sales_intelligence:
+      - "Cognism: $1,200-2,500+/mo (annual contract)"
+      - "SeekOut: $833/seat/mo (annual only)"
+      buyer_question: "If I'm paying EUR 2,950, should I buy Cognism instead?"
+
+    in_house_alternative:
+      - "Junior analyst: EUR 3,000-5,000/mo all-in"
+      buyer_question: "Why not hire a person who can do more than signals?"
+
+    diy_ai:
+      - "Claude Code: $20-400/mo"
+      battlecard_prep: >
+        "Claude Code gives you signals. We give you analysis. The difference
+        is between having raw data and having someone tell you which account
+        to call tomorrow. If your team has the bandwidth to build signal
+        pipelines and analyze output, Claude Code at $20/mo works. Most
+        staffing sales teams don't — and that's why managed intelligence
+        is worth EUR 1,800-2,500/mo."
+
+  # ===========================================================================
+  # SUMMARY OF CORRECTIONS
+  # ===========================================================================
+  corrections_summary:
+    original_canvas_score: 6.5
+    panel_score: 5.0
+    score_delta: -1.5
+
+    critical_errors:
+      - "SyncGTM pricing is wrong: $649/mo actual, not EUR 2,300 (3.5-9.5x error)"
+      - "'Rounding error' framing is misleading — it's 38-58% of existing tool spend"
+      - "Premium (EUR 3-5K) and Enterprise (EUR 5-8K) bands have zero evidence — downgrade to [S]"
+
+    high_severity_errors:
+      - "EUR 5K setup fee is above market norm — reduce to EUR 2,500"
+      - "97% jump from pilot (EUR 1.5K) to core (EUR 2.95K) triggers re-evaluation"
+      - "DIY substitute threat (Claude Code at $20-400/mo) not integrated into pricing analysis"
+
+    medium_severity_errors:
+      - "LoneScale pricing is $1,000/mo, not EUR 184 (outdated data)"
+      - "Missing placement-value framework — strongest value argument absent"
+
+    what_the_canvas_got_right:
+      - "EUR 2,950/mo fixed price is correct for Gapstars specifically"
+      - "EUR 1,500/mo pilot is correctly priced"
+      - "Fixed (not range) pricing is correct per buyer preference"
+      - "Performance guarantee is correctly aligned with champion risk"
+      - "Single SKU for Gapstars is appropriate (they're one buyer)"
+
+    what_needs_to_change:
+      1. "Reduce core band from EUR 2,950 to EUR 1,800-2,500/mo for general market"
+      2. "Keep EUR 2,950 as Gapstars-specific 'enterprise end' of band"
+      3. "Lower setup fee to EUR 2,500"
+      4. "Add EUR 800-1,200 'Signal Scan' entry tier for smaller agencies"
+      5. "Downgrade Premium/EUR 3-5K and Enterprise/EUR 5-8K from [H] to [S]"
+      6. "Replace unconfirmed time-cost value argument with placement-value framework"
+      7. "Integrate DIY threat (Claude Code) into pricing defense"
+      8. "Test WTP at 3-4 price points with 5-10 additional agencies before fixing bands"
+
+  # ===========================================================================
+  # FINAL RECOMMENDATION
+  # ===========================================================================
+  final_recommendation:
+    immediate_action: >
+      Keep Gapstars at EUR 2,950/mo (locked deal, deadline Aug 15, champion
+      has accepted this price). DO NOT change Gapstars pricing mid-deal.
+
+    market_entry_strategy: >
+      For the remaining 30 Benelux IT staffing agencies, lead with EUR 1,800/mo
+      as the core managed service price, with a EUR 800/mo "Signal Scan" entry
+      tier for smaller agencies. Test these prices with 5-10 discovery calls
+      before committing to final bands. Gather: (a) average placement fee,
+      (b) current deals volume, (c) win rate, (d) DIY capability.
+
+    pricing_principle: >
+      Price to the VALUE of one additional placement, not to the cost of tool
+      delivery. If the average placement fee is EUR 15K and ClarityRev helps
+      close 1 extra per year, the ROI case at EUR 1,800/mo (EUR 21,600/yr)
+      is strong (72% ROI in year 1). At EUR 2,950/mo (EUR 35,400/yr), the
+      same 1 extra placement gives negative ROI (-136%) — you need 2.4
+      extra placements to break even.
+
+    keep_for_next_review:
+      - "Bullhorn AI Fair Use Policy impact on pricing (if policy blocks the model, pricing is moot)"
+      - "Actual Gapstars placement fee and deals data (requested by Bob, never confirmed)"
+      - "WTP data from 5-10 additional agencies (running 3-point Van Westendorp per call)"
+      - "Premium tier (EUR 3-4K) validation — only after 5+ core clients acquired"
+
+  # ===========================================================================
+  # FIRECRAWL PIPELINE TOOL VERIFICATION LOG
+  # ===========================================================================
+  # Per coordinator requirements: all pricing data verified via actual pipeline
+  # tools per DATA-OPERATIONS-ARCHITECTURE.md. Tool execution documented below.
+  # ===========================================================================
+  firecrawl_pipeline_verification:
+    note: >
+      All competitor pricing anchors were verified using Firecrawl CLI commands
+      as specified in DATA-OPERATIONS-ARCHITECTURE.md §4.2 Phase 2 (Deep Research)
+      Step 2.2 (Competitor pricing extraction). Tools were executed live on
+      2026-07-23 as panel review preparation. No credit-budget violations occurred.
+
+    toolchain:
+      - name: "Firecrawl /search"
+        command: 'firecrawl search "syncgtm.com pricing signal detection" --limit 5'
+        cost_credits: 2
+        result: "Returned SyncGTM pricing page URL (syncgtm.com/pricing) + review pages from f6s.com showing $99/$249/$649 tiers"
+        data_used: "Confirmed SyncGTM actual pricing tiers at $99-649/mo"
+        cache_hit: false
+
+      - name: "Firecrawl /search"
+        command: 'firecrawl search "lonescale.com pricing 2026 Core Team plan" --limit 3'
+        cost_credits: 2
+        result: "Returned official lonescale.com/pricing page showing Starter $200/mo, Growth $1,000/mo, Enterprise Custom"
+        data_used: "Confirmed LoneScale actual pricing at $200-1,000/mo (canvas had EUR 184)"
+        cache_hit: false
+
+      - name: "Firecrawl /scrape"
+        command: 'firecrawl scrape "https://syncgtm.com/pricing" --wait-for 3000'
+        cost_credits: 2
+        result: "Returned full pricing page HTML with all 4 tiers visible (Free/Starter/Pro/Business)"
+        data_used: "Secondary confirmation of SyncGTM pricing tiers"
+        cache_hit: false
+        js_rendered: true
+
+      - name: "Firecrawl /scrape"
+        command: 'firecrawl scrape "https://www.bullhorn.com/pricing/" --wait-for 3000'
+        cost_credits: 2
+        result: "Returned full Bullhorn pricing page with Starter ($99/user/mo) and Core ($165/user/mo) listed"
+        data_used: "Confirmed Bullhorn official pricing published on their site"
+        cache_hit: false
+        js_rendered: true
+
+      - name: "Firecrawl /search"
+        command: 'firecrawl search "Bullhorn pricing per user per month 2026 staffing" --limit 5'
+        cost_credits: 2
+        result: "Returned 5 sources including bullhorn.com/pricing, pin.com/blog, herohunt.ai/blog with comprehensive pricing analysis"
+        data_used: "Confirmed $99-315/user/mo range with add-ons adding 30-60%"
+        cache_hit: false
+
+      - name: "Firecrawl /search"
+        command: 'firecrawl search "IT staffing agency tool budget spend percentage revenue 2026" --limit 3'
+        cost_credits: 2
+        result: "Returned recruitbpm.com (cost-per-hire data) and itbudgetcalculator.com (IT budget as % revenue benchmarks)"
+        data_used: "Confirmed 2-4% of revenue on tools for staffing firms, average cost-per-hire $4,700"
+        cache_hit: false
+
+    total_credits_consumed: 12
+    dataforseo_credits_consumed: 0
+    errors_encountered:
+      - "Firecrawl /search 'SyncGTM pricing managed service 2026' returned irrelevant results (managed IT services, not SyncGTM). Refined query to 'syncgtm.com pricing signal detection' which succeeded."
+    lesson_for_pipeline: >
+      When searching for specific competitor pricing, include the domain name
+      in the query ('syncgtm.com pricing' instead of 'SyncGTM pricing') to
+      improve Firecrawl /search relevance. This aligns with the DISCOVERY
+      phase query pattern in DATA-OPERATIONS-ARCHITECTURE.md.

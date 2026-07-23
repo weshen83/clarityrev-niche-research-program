@@ -240,7 +240,7 @@ MCP server providing Google search results via Serper.dev API — low latency, s
 |-----------|--------|
 | **MCP packages** | `serper-search-mcp`, `serper-dev-mcp`, `go-serper-mcp-server` (multiple implementations) |
 | **API key required** | Yes — free from https://serper.dev |
-| **Free tier** | 2,500 free queries (one-time starter credits) |
+| **Free tier** | 2,500 free queries/month (recurring — NOT one-time, monthly reset) |
 | **Paid starts** | $50/month for 50,000 searches (~$0.001/search) |
 | **Latency** | 1-2 seconds typical |
 | **Concurrency** | 300 queries/second default |
@@ -281,7 +281,7 @@ MCP server providing Google search results via Serper.dev API — low latency, s
 ```
 
 **Key Tips:**
-- Free 2,500 queries are one-time credits — not monthly recurring. Use strategically for niche validation, not bulk operations
+- Free 2,500 queries are **monthly recurring** (2,500 queries/month, resets monthly). This is BETTER than previously documented — provides 100 queries/niche x 25 niches every month. Use for ongoing validation across all niches.
 - At $0.30/1,000 queries on pay-as-you-go, bulk niche research costs pennies
 - Combine with Firecrawl: use Serper MCP for discovery, then Firecrawl `scrape` for page content extraction
 - Results are uncached Google queries — always fresh
@@ -811,7 +811,7 @@ Company logo and brand data API.
 | **Brand API (separate)** | $99/month for 2,500 calls |
 | **Rate limit** | 100 req/sec sustained; burst cap 30K req/5 min |
 | **Auth** | Free API key (no credit card required) |
-| **Attribution** | Not required |
+| **Attribution** | Not required per current docs — but best practice: add "Powered by Brandfetch" to any public-facing logo display output (SEC-11 recommendation) |
 | **Paid starts** | Growth plan from $99/month (for higher Brand API volume) |
 | **Docs** | https://docs.brandfetch.com |
 | **Best for** | Company logos, brand colors, social links, company description |
@@ -1455,7 +1455,7 @@ curl -X GET "https://daily-international-job-postings.p.rapidapi.com/api/v2/jobs
 | **OpenRegistry MCP** | 30 req/min free = ~1,200 req/day across all niches | Multi-country fan-out cap (3 jurisdictions/60s) |
 | **Financial Hub MCP** | Unlimited (SEC data is free) | 10 req/sec SEC limit (built-in rate limiter handles this) |
 | **PaperPlain MCP** | Unlimited | Upstream API rate limits (ArXiv strict, Semantic Scholar 1 req/s) |
-| **Serper MCP** | 2,500 queries one-time | One-time credits — use for initial validation only |
+| **Serper MCP** | 2,500 queries/month recurring | Monthly recurring credits — use for ongoing validation across all 25 niches |
 | **Google CSE MCP** | 100 searches/day = ~4 searches/niche/day | Useful for targeted lookups, not bulk |
 | **TAM-MCP-Server** | Unlimited | Quality depends on data source API keys provided |
 | **HubSpot API** | 100 req/10s = ~10 req/s | More than sufficient for CRM delivery |
@@ -1527,7 +1527,7 @@ curl -X GET "https://daily-international-job-postings.p.rapidapi.com/api/v2/jobs
 | OpenRegistry MCP | 30 req/min (signed-in) | No (OAuth) | Per minute |
 | Financial Hub MCP | Unlimited (SEC data) | No (SEC) | 10/sec (SEC) |
 | PaperPlain MCP | Unlimited | No | Varies by upstream |
-| Serper MCP | 2,500 queries (one-time) | Yes | One-time |
+| Serper MCP | 2,500 queries/month recurring | Yes | Monthly recurring (previously documented as one-time — corrected) |
 | Google CSE MCP | 100 searches/day | Yes (Google) | Daily |
 | TAM-MCP-Server | Unlimited | Varies by source | Varies |
 | HubSpot API | 100 req/10s | Yes (OAuth) | Rolling 10s |

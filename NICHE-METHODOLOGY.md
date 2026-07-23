@@ -71,6 +71,24 @@ Every factual claim in the Niche Canvas MUST be annotated with one of four grade
 
 ---
 
+## LIMITATIONS (ALL users MUST read before interpreting scores)
+
+These limitations are binding context for every canvas, score, and verdict produced by this methodology. They are not disclaimers — they are measurement rules that affect how outputs are interpreted.
+
+1. **Scores are ORDINAL, not cardinal.** A 4.2 niche is NOT necessarily "better" than a 3.8 niche — the difference has no statistical meaning. Rankings indicate relative position, not absolute quality. Confidence intervals from bootstrap resampling (Part 5) show which differences are meaningful.
+
+2. **Equal weighting is a DESIGN CHOICE**, not an empirical finding. The 6 dimensions of the RIOS formula are weighted equally by convention, not by evidence. The sensitivity analysis (Part 5) examines how ranking changes under alternative weightings — always consult this before treating a ranking as definitive.
+
+3. **The >3.0 threshold was set before any data existed.** It is an initial hypothesis for triage, not a validated decision boundary. It may change as the first 5-10 calibration niches provide empirical data. The Stage-Gate at niche #5 (Part 5) is the first opportunity to adjust it.
+
+4. **Rankings are conditional on unverifiable assumptions.** Market projections, trigger frequency estimates, and competitive threat assessments all carry assumptions that cannot be validated within the program's 24-month timeline. Falsifiability criteria (Appendix A §16) track which specific claims would be refuted by future outcomes.
+
+5. **ALL "Go / No-Go" verdicts carry residual uncertainty.** They are investment hypotheses, not predictions. Each canvas includes falsifiability criteria to enable post-hoc learning. A "Go" means "the evidence supports proceeding with eyes open" — not "this will succeed."
+
+6. **Evidence grades measure source credibility, not business truth.** A [P] grade means "multiple independent sources agree on this claim." It does NOT mean "this claim is guaranteed to hold in practice." Business truth is determined by market feedback, which this methodology cannot predict.
+
+---
+
 ## 2. PART 1: THE CANVAS — 15 SECTIONS
 
 Each Niche Canvas has exactly 15 sections, in order. Every section must be ADDRESSED — not necessarily filled with data. If data is unavailable after a documented exhaustive search, write:
@@ -136,6 +154,60 @@ Agents must not skip sections, combine sections, or reorder them.
 
 **Most common failure mode:** Proceeding with research before confirming data access AND build feasibility. Also: assuming API access without checking ToS (the Bullhorn lesson). Also: rating a system GREEN on access but ignoring XL build effort — effectively YELLOW for the first 2 months.
 
+#### 1.5a Platform Risk Assessment (BINDING — execute before scoring any CRM/ATS-native niche)
+
+**Why:** The Bullhorn calibration revealed that a platform's API Fair Use Policy can explicitly prohibit ClarityRev's business model. A1 missed this, A2 found it — the difference was 1.15 points on the RIOS scale and a verdict change from "Conditional Go" to "Validate First." This gate prevents that error.
+
+**Procedure (execute BEFORE the §1.4 Data Access Gate):**
+
+1. **Read the platform's API Terms of Service / Fair Use Policy.** Search for: `[platform] API fair use policy`, `[platform] API terms of service`, `[platform] developer terms`. Use Firecrawl scrape — these are typically hosted on the platform's developer portal or GitHub Pages.
+
+2. **Check THREE specific prohibitions:**
+   - Does the policy prohibit AI/LLM tools connecting to the API?
+   - Does the policy prohibit third-party tools writing data back to the platform?
+   - Does the policy prohibit using the API to build competitive products?
+   - Does the platform require written permission for any of the above?
+   - Can the platform terminate API access at will, without reason?
+
+3. **Score the platform risk:**
+   - **GREEN** — Open API, no AI/LLM restrictions, standard rate limits. Example: HubSpot.
+   - **YELLOW** — API accessible but requires partnership agreement or has usage restrictions that may apply. Example: Salesforce (enterprise agreement may be needed).
+   - **YELLOW_PENDING** — Platform has restrictive policy BUT partnership talks are in progress. Must document: contact person, date of last communication, expected resolution date. Re-check every 60 days.
+   - **RED** — Platform explicitly prohibits AI/LLM access, third-party write-back, or competitive products. Do NOT proceed with CRM-native delivery for this platform. Fall back to CRM-agnostic delivery.
+
+4. **Document the finding.** Write the actual policy text (not a summary) for the 3 prohibition checks. Cite the exact URL and scrape date. If the policy is ambiguous, get a legal reading before proceeding.
+
+5. **This gate MUST be GREEN, YELLOW, or YELLOW_PENDING to proceed.** RED = redesign delivery as CRM-agnostic or park the niche.
+
+**Calibration finding (2026-07-23):** Bullhorn's API Fair Use Policy (`bullhorn.github.io/api-fair-use-policy/`, Dec 17 2025) prohibits: (a) connecting AI/LLM tools to the API, (b) MCP-based write-back, (c) third-party API access. Partnership talks are in progress (~$7K/yr). Risk: YELLOW_PENDING.
+
+#### 1.5b CRM-Agnostic Delivery — Default Architecture (BINDING)
+
+**Principle:** Signal detection and analysis is CRM-agnostic by default. CRM-native delivery (read-enrich-write against a specific CRM/ATS) is an OPTIONAL integration layer that requires platform risk assessment (§1.5a) to pass before it can be selected as the primary delivery mode.
+
+**The three delivery tiers:**
+
+| Tier | Name | Description | When to Use |
+|---|---|---|---|
+| **Tier 1** | **Dashboard/Email/Slack** | Signals delivered via web dashboard, email reports, or Slack notifications. No CRM integration needed. | Default for ALL niches. Always available. |
+| **Tier 2** | **CRM-Native (Green Platform)** | Read-enrich-write against a CRM with open API and no AI restrictions. Example: HubSpot. | When §1.5a returns GREEN. Enrich data, write signals back to CRM. |
+| **Tier 3** | **CRM-Native (Partnership Required)** | Read-enrich-write against a CRM requiring partnership agreement. Example: Bullhorn, Salesforce. | When §1.5a returns YELLOW_PENDING and partnership is secured. |
+
+**For each niche evaluation:**
+1. Tier 1 (Dashboard/Email/Slack) is ALWAYS scoped as the primary delivery mode.
+2. If the niche's dominant CRM/ATS returns GREEN from §1.5a: Tier 2 is scoped as a premium upsell.
+3. If the niche's dominant CRM/ATS returns YELLOW_PENDING: Tier 3 is scoped as a future unlock pending partnership.
+4. If the niche's dominant CRM/ATS returns RED: Tier 3 is descoped entirely. Do NOT build CRM-native delivery for this platform.
+
+**Current platform status (2026-07-23):**
+| Platform | Risk | Delivery Tier |
+|---|---|---|
+| HubSpot | GREEN (open API, no AI restrictions, 250K req/day) | Tier 2 — CRM-native available |
+| Bullhorn | YELLOW_PENDING (partnership talks, ~$7K/yr) | Tier 3 — pending partnership |
+| Salesforce | YELLOW (enterprise agreement likely needed) | Tier 3 — pending agreement |
+| Zoho CRM | Not yet assessed | Not yet assessed |
+| Pipedrive | Not yet assessed | Not yet assessed |
+
 #### 1.5 Market Sizing & Structural Attractiveness
 - **Total addressable companies** — triangulated from ≥2 sources. For each source: name, year, methodology, potential bias. Reconciled estimate with 80% confidence interval (e.g., "8,000-14,000 companies"). `[E]` or `[H]`.
 - **Geographic scope** — NL-only, Benelux, DACH, EU, US, global — with justification tied to distribution access, language requirements, and founder network. `[P]`.
@@ -152,6 +224,14 @@ Agents must not skip sections, combine sections, or reorder them.
   - **Structural attractiveness score:** Average of 5 forces. ≥3.5 = structurally attractive. 2.5-3.5 = moderate. <2.5 = structurally challenging — proceed with caution. `[H]` — judgment.
 - **Buyer accessibility score:** How hard is it to get a meeting with the economic buyer? 1 = "founder has their phone number," 5 = "requires 6 months of relationship building and a conference introduction." `[H]`.
 - **Buying temperature:** Cold (buyers unaware of problem) / Warm (aware, seeking solutions) / Hot (actively buying). Determines GTM urgency — hot niches convert on Snapshot alone; cold niches require category education. `[H]`.
+
+**Data coverage tiering for market sizing:** When combining sources, use the following hierarchy. NEVER use a lower tier when a higher tier is available. When only a lower tier is available, flag the data_type_mismatch in trace-map.yaml.
+
+- **TIER 1 (PRIMARY):** Government/IGO API data (EUROSTAT, OECD, World Bank, CBS StatLine). Highest authority. Grade cap: `[E]`.
+- **TIER 2 (SECONDARY):** Firecrawl /search for industry reports, analyst publications, trade associations. Acceptable proxy. Grade cap: `[E]`.
+- **TIER 3 (TERTIARY):** DataForSEO keyword search volume as directional proxy. ONLY when Tiers 1+2 are unavailable. Grade cap: `[H]`. MUST set `data_type_mismatch: true` in trace-map.yaml.
+
+**Rule:** If Tiers 1 and 3 are combined in a single TAM estimate (e.g., Gov API for total market + search volume for segment sizing), the combined estimate inherits the LOWER grade. Flag as `data_type_mismatch: true`.
 
 **Most common failure mode:** **False precision** — citing a specific market size from one generic report. Confidence intervals are the antidote. Also: **assuming a niche is a real market** without checking for third-party recognition.
 
@@ -553,6 +633,14 @@ Rank aggregators by transaction proximity. The one "closest to the signature" is
 - §6B signal catalog ⊃ §6A trigger list (broader set, continuously monitored, routed to client's CRM)
 - When a §6A-triggered prospect converts to a paying client, the signals that proved value during the Snapshot become the baseline recurring service. Additional signals from §6B are activated as the client expands.
 - Pain chain: §3 pain dimensions → §6A triggers (which pains create buying urgency) → §6B signals (which pains does the recurring service monitor)
+
+**INHERENT LIMITATION — Digital Signal Coverage Gap:** Peer recommendation is the #1 B2B buying trigger (Forrester, 2024) but has ZERO digital exhaust. Our signal system detects DIGITAL triggers: job changes, funding events, website tech changes, news coverage, review sentiment shifts. It CANNOT detect:
+- Word-of-mouth referrals between executives
+- In-person meeting outcomes and follow-up decisions
+- Internal champion-building within prospect organizations
+- Trust built through industry reputation over years
+
+**This means:** Our trigger scores measure digitally-observable buying intent, not total buying intent. A niche with strong digital signal density will score higher than a relationship-driven niche — not because it's a better opportunity, but because its triggers are easier to detect. This is accounted for in the DATA-COVERAGE-MATRIX normalization (see Part 5).
 
 **Shared infrastructure:** Detection pipelines, enrichment, deduplication logic, data sources. §11 workflows consume signals from both sections in a unified format.
 
@@ -3571,6 +3659,35 @@ Before starting any new niche, check existing ClarityRev research for overlaps. 
 
 ---
 
+### 3.6 Dark Matter — Inherent Data Limitations
+
+Certain signal types have ZERO digital exhaust and CANNOT be detected by any automated pipeline tool. This is an inherent limitation, not a pipeline deficiency. The following dark matter types must be acknowledged in every canvas and accounted for in fertility scoring:
+
+| Dark Matter Type | Affected Niches | Impact | Mitigation |
+|---|---|---|---|
+| Trade show attendance / booth visits | EU Public Sector, Niche Manufacturing, Professional Services | MISSING data for competitive landscape assessment | Supplement via Firecrawl search for event sponsorships. Flag in canvas §15. |
+| In-person meetings / word-of-mouth referrals | ALL niches (especially consulting, fractional exec) | #1 B2B trigger completely invisible to digital systems | Acknowledged in §6.0 inherent limitation. Trigger scores measure DIGITAL intent only. |
+| Private company dynamics (no Crunchbase, no SEC) | Fractional Executive, Consulting, Agencies, Staffing | No funding data, no public financials, no org charts | Normalized via DATA-COVERAGE-MATRIX (see Part 5). Coverage factor reduced for HIGH private_company_prevalence. |
+| Internal decision-making processes | ALL niches | Purchase process, evaluation criteria, internal champions invisible | Supplement via VOC buyer language quotes where available. Flag in canvas §15. |
+| Oral culture industries | Traditional trades, family businesses, local services | Zero digital footprint for some market segments | Flag niche as DARK_MATTER_IMPACT: HIGH. Coverage factor adjusted accordingly. |
+
+**Per-niche dark matter template (to be included in canvas §15):**
+
+```yaml
+DARK_MATTER_IMPACT: HIGH | MEDIUM | LOW
+AFFECTED_SECTIONS:
+  - §1 (Market Sizing — private company gaps)
+  - §3 (Competitive Landscape — trade show attendance)
+  - §6 (Signal Catalog — word-of-mouth invisible)
+  - §13 (Customer Journey — internal decisions opaque)
+UNAVAILABLE_DATA_TYPES: [list of data types with no tool access]
+SPARSE_DATA_TYPES: [list of data types with limited coverage]
+```
+
+**Data coverage normalization:** The DATA-COVERAGE-MATRIX.yaml ensures data-sparse niches are not systematically under-scored. See Part 5 for the normalization formula. A niche with HIGH private_company_prevalence receives a coverage factor reduction of 0.15.
+
+---
+
 ## 4. PART 3: QUALITY GATES
 
 ### 4.1 Section-Level Gates
@@ -4357,6 +4474,101 @@ Sequencing:
 ```
 
 **Integration with execution:** The portfolio dashboard feeds directly into the Day 1 After Selection execution plan (F-P3-2). The Beachhead niche determines the first build priorities, the first outreach targets, and the first signal detection infrastructure.
+
+---
+
+## 8. PART 7: PIPELINE ARCHITECTURE & EXECUTION DESIGN
+
+### 8.1 Two-Pass Pipeline
+
+The niche program executes in two passes to produce actionable output within 2 weeks rather than waiting 6+ weeks for all 25 canvases.
+
+**PASS 1 — STANDARD Depth (All 25 Niches)**
+
+| Parameter | Value |
+|---|---|
+| Duration | 2 weeks wall-clock (at 3 concurrent agents) |
+| Credit budget | ~425 credits total (17 cr/niche × 25) |
+| Research depth | 1-2 sources per claim, search only |
+| Grade ceiling | [S] (Substantiated) — [P] not achievable at STANDARD depth |
+| Output | 25 canvases at STANDARD depth, fertility-ranked list |
+
+**Stage-Gate at Niche #5:** After the first 5 niches are scored, check the fertility ranking. If NO niche in the top 5 has a fertility score > 3.0, STOP and revisit the methodology. This gate prevents wasting credits on a niche set that is fundamentally unappealing.
+
+**PASS 2 — DEEP Depth (Top 5 by Fertility Score)**
+
+| Parameter | Value |
+|---|---|
+| Duration | 1 additional week (at 3 concurrent agents) |
+| Credit budget | ~1,000 credits total (200 cr/niche × 5) |
+| Research depth | 3+ sources per claim, crawl + interact |
+| Grade ceiling | [P] (Proven) achievable |
+| Output | 5 investment-grade canvases suitable for go/no-go decisions |
+
+### 8.2 Surprise Niche Slot
+
+One additional niche slot is reserved for mid-program opportunities that were not in the initial 25-niche list. Selection criteria:
+- Must be detected mid-program (not in initial 25)
+- Must have at least one live trigger detectable within 30 days
+- Consumes 300 credits from the surprise_niche_reserve in CREDIT_BUDGET.yaml
+- Evaluated at STANDARD depth only (or DEEP if it ranks in top 5)
+
+### 8.3 Data Staleness Phasing
+
+To minimize time-sensitive data decay (e.g., job postings collected on Day 1 are stale by Day 14 when the canvas is finalized), pipeline data collection is phased:
+
+**Phase 1 — Stable Data (Days 1-2 of per-niche workflow):**
+- Market sizing (gov API + industry reports — doesn't meaningfully decay)
+- Competitive landscape profiling (competitor positioning changes slowly)
+- Ecosystem analysis (aggregator/channel mapping — stable)
+- TAM/SAM/SOM calculations (annual metrics — stable)
+
+**Phase 2 — Semi-Stable Data (Days 2-3):**
+- Pricing research (changes quarterly — weekly refresh tolerance)
+- Buyer persona development (qualitative — stable once collected)
+- Trigger signal cataloging (event types — stable; individual events change)
+- Customer journey design (design section — not time-sensitive)
+
+**Phase 3 — Volatile Data (Day 4 — LAST step before canvas finalization):**
+- Job postings / active hiring signals
+- Recent news and events
+- Current funding rounds
+- Live pricing checks
+
+**Rule:** Phase 3 data is collected as the FINAL research step before canvas finalization. If canvas finalization is delayed >5 days after Phase 3 collection, Phase 3 data must be refreshed before finalizing.
+
+### 8.4 Falsifiability Criteria
+
+To ensure pipeline outputs are testable and traceable, every canvas MUST include falsifiability criteria (populated during canvas finalization). These answer the question: "If this niche generates < EUR 50K ARR within 12 months of launch, which specific pipeline claim was wrong?"
+
+Template for canvas §16 (included in Appendix A):
+
+```yaml
+FALSIFIABILITY_CRITERIA:
+  - claim: "TAM of EUR 120M"
+    trace_map_id: T-042
+    section: "§1.5"
+    original_prediction: "EUR 120M total addressable market"
+    why_wrong: "Gov API data may include non-addressable segments (enterprise companies outside scope)"
+    observation_window: "12 months post-launch"
+    refuted_if: "Actual pipeline volume < 20% of projected within 6 months"
+  - claim: "Trigger frequency: 3-5 events/month"
+    trace_map_id: T-087
+    section: "§6A"
+    original_prediction: "3-5 detectable trigger events per prospect per month"
+    why_wrong: "Based on job posting proxy, not direct observation of buying intent signals"
+    observation_window: "3 months post-launch"
+    refuted_if: "Average detected triggers < 1 per prospect per month"
+  - claim: "WTP: EUR 2,500-3,500/mo"
+    trace_map_id: T-123
+    section: "§9"
+    original_prediction: "Willingness-to-pay range of EUR 2,500-3,500 per month"
+    why_wrong: "Based on competitor pricing anchoring, not willingness-to-pay study"
+    observation_window: "6 months post-launch"
+    refuted_if: "Average deal size < EUR 1,500/mo or conversion rate < 5% at EUR 2,500+"
+```
+
+Each falsifiability entry MUST link to a trace-map ID. This forces traceability between pipeline claims and observable market outcomes. Falsifiability is completed during canvas finalization, not during initial research — it requires a review of all claims to identify the ones most likely to be wrong.
 
 ---
 

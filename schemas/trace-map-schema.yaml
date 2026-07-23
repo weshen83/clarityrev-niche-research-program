@@ -34,6 +34,12 @@ fields:
     required: true
     description: "Git commit hash of NICHE-METHODOLOGY.md used"
 
+  - field: private_company_prevalence
+    type: string
+    required: false
+    enum: ["HIGH", "MEDIUM", "LOW"]
+    description: "Proportion of companies in this niche that are privately held (no Crunchbase, no SEC filings). Affects coverage normalization."
+
   - field: claims
     type: list
     required: true
@@ -60,6 +66,28 @@ fields:
         required: true
         enum: ["[P]", "[E]", "[H]", "[S]"]
         description: "Evidence grade assigned by the DETERMINISTIC grade engine (§6.2)"
+
+      - field: semantic_verified
+        type: boolean
+        required: false
+        description: "True if claim was verified by semantic checker (D-C5). False = deterministic grade only."
+
+      - field: semantic_support_level
+        type: string
+        required: false
+        enum: ["SUPPORTS", "PARTIALLY_SUPPORTS", "NEUTRAL", "CONTRADICTS", "SOURCE_UNAVAILABLE"]
+        description: "Semantic checker verdict (D-C5) on whether source supports claim."
+
+      - field: source_tier
+        type: string
+        required: false
+        enum: ["PRIMARY", "SECONDARY", "TERTIARY"]
+        description: "For market sizing claims: which source tier was used. See methodology §1 source tiering."
+
+      - field: data_type_mismatch
+        type: boolean
+        required: false
+        description: "True if a TERTIARY source (e.g., search volume) was used as proxy for market size. Flag prevents silent type substitution."
 
       - field: grade_criteria
         type: dict
@@ -134,6 +162,73 @@ fields:
         type: float
         required: false
         description: "For [P] claims with numerical values: percentage agreement between sources. Required if evidence_grade is [P] and claim contains a numerical value."
+
+      - field: review_corpus_availability
+        type: string
+        required: false
+        enum: ["SUFFICIENT", "LIMITED", "NONE"]
+        description: "Whether >=10 reviews from >=2 sources were available for this niche. SUFFICIENT = meets targets, LIMITED = partial, NONE = no review corpus."
+
+      - field: trigger_evidence
+        type: dict
+        required: false
+        description: "Evidence backing each dimension of trigger scoring. At least 2 of 4 dimensions must have evidence; detectability must cite a live tool."
+        children:
+          - field: frequency
+            type: dict
+            required: false
+            children:
+              - field: score
+                type: integer
+                required: true
+                min: 1
+                max: 5
+              - field: evidence
+                type: string
+                required: true
+                description: "Source or rationale for frequency estimate."
+          - field: urgency
+            type: dict
+            required: false
+            children:
+              - field: score
+                type: integer
+                required: true
+                min: 1
+                max: 5
+              - field: evidence
+                type: string
+                required: true
+          - field: budget_likelihood
+            type: dict
+            required: false
+            children:
+              - field: score
+                type: integer
+                required: true
+                min: 1
+                max: 5
+              - field: evidence
+                type: string
+                required: true
+          - field: detectability
+            type: dict
+            required: false
+            children:
+              - field: score
+                type: integer
+                required: true
+                min: 1
+                max: 5
+              - field: evidence
+                type: string
+                required: true
+                description: "Must name a specific tool or API that detects this trigger."
+              - field: evidence_type
+                type: string
+                required: true
+                enum: ["DOCUMENTED_CLAIM", "LIVE_TOOL"]
+                description: "DOCUMENTED_CLAIM = literature/reference supports it. LIVE_TOOL = actually verified with a working tool."
 
   - field: independent_verification
     type: dict

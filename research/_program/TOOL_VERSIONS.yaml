@@ -1,0 +1,49 @@
+# TOOL_VERSIONS.yaml — Pinned API versions from Phase 0 calibration
+#
+# Created: 2026-07-23 (Workstream C, SRE-M06 fix)
+# Update after Phase 0 calibration with actual measured versions.
+# Delta check every 10 niches: compare headers against pinned versions.
+#
+# For pinned Python package versions, see requirements.txt
+
+last_updated: '2026-07-23'
+phase_zero_run: false             # Set to true after Phase 0 calibration completes
+
+tools:
+  firecrawl:
+    cli_version: null             # Verify with: firecrawl --version
+    api_version: null             # From API response headers
+    notes: "CLI version pinned after Phase 0 calibration"
+
+  dataforseo:
+    api_version: null             # From API response headers
+    serp_endpoint: "serp/google/organic/live/advanced"
+    notes: "API version from HTTP response headers"
+
+  open_registry_mcp:
+    protocol_version: null        # MCP protocol version
+    notes: "Check during Phase 0"
+
+  reddit_research_mcp:
+    protocol_version: null
+    notes: "Hosted SSE — check availability"
+
+  eurostat_api:
+    api_version: null
+    notes: "Check for breaking changes"
+
+  oecd_api:
+    api_version: null
+    notes: "Rate limit: 20 req/min. Verify during Phase 0."
+
+  gdelt_project:
+    api_version: null
+    notes: "Free BigQuery — verify query compatibility"
+
+  world_bank_api:
+    api_version: null
+    notes: "Rate limit UNVERIFIED — verify during Phase 0"
+
+  imf_data_api:
+    api_version: null
+    notes: "50 req/s — set unique user_agent"

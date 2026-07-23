@@ -1,0 +1,27 @@
+# _CONCURRENCY_LOCK.yaml — Global agent concurrency coordination
+#
+# Purpose: Prevent 4 concurrent agents from exceeding tool rate limits.
+# Protocol:
+#   1. Before a burst (Phase 2 Start): agent writes its niche_id, start_time, expected concurrent count
+#   2. After burst completion: agent releases by removing its entry
+#   3. Other agents read the lock and adjust throttling: if total active requests across agents > 40,
+#      wait until <= 40 before issuing new requests
+#   4. Stale locks (>5 min old) may be broken by any agent (see RUNBOOK.md §Stale Lock Cleanup)
+#
+# Created: 2026-07-23 (Workstream C, SRE-C04 fix)
+# Schema version: 1.0
+
+schema_version: 1.0
+last_updated: '2026-07-23'
+
+tool_limits:
+  firecrawl:
+    max_concurrent_total: 40      # Leave 10 slots headroom from 50-plan limit
+    max_concurrent_per_agent: 10
+    burst_backoff_seconds: 30
+  dataforseo:
+    max_concurrent_total: 25      # Leave 5 slots headroom from 30-plan limit
+    max_concurrent_per_agent: 5
+    burst_backoff_seconds: 15
+
+active_entries: []                # Each entry: {niche_id, agent_session_id, started_at, expected_count}

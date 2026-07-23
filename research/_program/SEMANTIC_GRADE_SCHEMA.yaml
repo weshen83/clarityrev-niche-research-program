@@ -1,0 +1,96 @@
+version: '1.0'
+created: '2026-07-23'
+description: Semantic grade schema for evidence-claim verification using Claude API
+
+# ─── Grade Levels ─────────────────────────────────────────────────────────────
+# Each grade represents the degree to which a source supports (or contradicts)
+# a claim. Assigned by the semantic-checker script using Claude API analysis.
+# The weight field enables weighted scoring across a claim set.
+
+grades:
+  SUPPORTS:
+    description: Source content directly supports the claim with specific evidence
+    weight: 1.0
+
+  PARTIALLY_SUPPORTS:
+    description: Source content partially supports or tangentially relates to the claim
+    weight: 0.5
+
+  NEUTRAL:
+    description: Source content is neutral — neither supports nor contradicts
+    weight: 0.0
+
+  CONTRADICTS:
+    description: Source content actively contradicts the claim
+    weight: -1.0
+
+  SOURCE_UNAVAILABLE:
+    description: Source cannot be fetched (404, timeout, rate-limit, etc.)
+    weight: null  # Not scored; excluded from aggregate calculations
+
+# ─── Output Record Fields ─────────────────────────────────────────────────────
+# Every graded claim produces a record containing these fields.
+# Deterministically-graded (non-sampled) claims set semantic_verified: false
+# and support_level: null.
+
+fields:
+  claim_text:
+    type: str
+    description: The exact claim text being verified
+    required: true
+
+  source_url:
+    type: str
+    description: URL of the source being checked against the claim
+    required: true
+
+  support_level:
+    type: enum
+    values: [SUPPORTS, PARTIALLY_SUPPORTS, NEUTRAL, CONTRADICTS, SOURCE_UNAVAILABLE]
+    description: Semantic grade assigned by the verifier
+    required: true
+    nullable: true  # null when semantic_verified is false
+
+  confidence:
+    type: float
+    range: [0.0, 1.0]
+    description: Model confidence in the assigned grade (0.0 = uncertain, 1.0 = certain)
+    required: true
+    nullable: true  # null when semantic_verified is false
+
+  extracted_quote:
+    type: str
+    description: Verbatim quote from the source that supports the grade rationale
+    required: true
+    nullable: true  # null when semantic_verified is false or SOURCE_UNAVAILABLE
+
+  rationale:
+    type: str
+    description: Why the model assigned this grade (brief explanation)
+    required: true
+
+  verifier_timestamp:
+    type: datetime
+    description: ISO 8601 datetime when the semantic verification was performed
+    required: true
+
+  trace_map_id:
+    type: str
+    description: Trace-map claim ID that this evidence-claim corresponds to
+    required: true
+
+  section:
+    type: str
+    description: Canvas section this claim belongs to (e.g. market_size, competitive_threat)
+    required: true
+
+  niche_id:
+    type: str
+    description: Niche identifier (e.g. N-001, N-002)
+    required: true
+
+  semantic_verified:
+    type: bool
+    description: False for deterministically-graded (non-sampled) claims; true for
+      claims that underwent semantic verification via Claude API
+    required: true

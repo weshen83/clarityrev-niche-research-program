@@ -1,2 +1,31 @@
+# CREDIT_BUDGET.yaml — Running credit consumption tracker
+#
+# Every credit-consuming operation logs to this file with:
+#   timestamp, niche_id, tool, operation, credits_consumed, credits_remaining
+#
+# SRE-M08 fix: Added cache_hit tracking for hit/miss per fetch
+# All gate transition checks read the most recent credits_remaining value.
+
 firecrawl_remaining: 10000
 dataforseo_remaining: 50.0
+
+# Surprise niche reserve (F-H1): 300 credits for one mid-program opportunity
+# not in the initial 25-niche list. Drawn only after Stage-Gate at niche #5.
+surprise_niche_reserve: 300
+
+# Semantic verification credits (Claude API calls via semantic-checker script)
+# Each API call costs ~500 output tokens + prompt tokens (~$0.01-0.03 per call)
+# Incremented by semantic-checker script on each run.
+semantic_credits_consumed: 0
+
+# Cache hit tracking (SRE-M08): records hit/miss per fetch for cache efficiency monitoring
+# Fields: timestamp, niche_id, data_type, cache_status (HIT|MISS|STALE), operation
+cache_hits:
+  total_checks: 0
+  hits: 0
+  misses: 0
+  stales: 0
+
+# Credit operation log (append-only)
+operations: []
+# Each entry: {timestamp, niche_id, tool, operation, credits_consumed, credits_remaining}

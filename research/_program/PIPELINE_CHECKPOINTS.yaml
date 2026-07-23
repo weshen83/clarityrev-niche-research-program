@@ -1,3 +1,9 @@
+# PIPELINE_CHECKPOINTS.yaml — Per-niche checkpoint state
+# PHASE_0_DELTA_COUNTER: incremented after each niche completion; triggers
+# Phase 0 delta check at 10 (and multiples thereafter). Added SRE-L04 fix.
+
+PHASE_0_DELTA_COUNTER: 0
+
 waivers:
 - timestamp: '2026-07-22T18:19:24.652749+00:00'
   niche_id: N-099

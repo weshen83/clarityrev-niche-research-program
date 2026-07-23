@@ -1,13 +1,23 @@
 #!/usr/bin/env python3
 """
-validate-schema — Script 3 of 5: Validate structured data files against
-schema definitions BEFORE data enters canvas authoring.
+validate-schema — Validate structured data files against schema definitions.
+
+Two operating modes:
+  1. `--all` or `--niche N-XXX` (Batch mode)
+     Scans one or all niche directories, infers schemas from filenames, and
+     validates every YAML file (including trace-map.yaml).  JSON output.
+  2. `DATA_TYPE FILE_PATH` (Single-file mode, backward-compatible)
+     Validates one file against a named schema.
 
 Google SRE pattern: validates data at ingestion time, not mid-canvas.
 Catches schema violations early — prevents bad data from propagating
 into canvas authoring and contaminating downstream analysis.
 
-Usage:
+Usage (batch mode):
+    ./validate-schema --all [--verbose]
+    ./validate-schema --niche N-XXX [--verbose]
+
+Usage (single-file mode):
     ./validate-schema DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]
 
 DATA_TYPE is one of: competitor-profile, review-corpus, market-sizing,
@@ -15,21 +25,19 @@ DATA_TYPE is one of: competitor-profile, review-corpus, market-sizing,
 
 Exit codes:
     0  PASS                 All checks passed, no issues.
-    1  FAIL                 Blocking violations found (required missing,
-                            type mismatch, enum, range, format, or custom rule
-                            ERROR).
-    2  PASS_WITH_WARNINGS   Non-blocking issues found (optional missing,
-                            warnings, custom rule WARNING).
+    1  FAIL                 Blocking violations found.
+    2  PASS_WITH_WARNINGS   Non-blocking issues found.
     3  INTERNAL_ERROR       Script bug, corrupted schema/data YAML, or
                             missing dependency. Escalate to Wesley.
     4  INVALID_INPUT        Invalid arguments, unknown data type, or file
-                            not found. Fix inputs and re-run.
+                            not found.
 
 Output: Structured JSON to stdout. Human-readable logs to stderr.
 """
 
 import sys
 import re
+import json as json_module
 import traceback
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
@@ -61,6 +69,32 @@ DATA_TYPE_SCHEMA_MAP = {
 
 VALID_DATA_TYPES = set(DATA_TYPE_SCHEMA_MAP.keys())
 
+# Filename keyword → schema data type (for batch-mode inference)
+FILENAME_INFERENCE_MAP = {
+    "competitor-profile": "competitor-profile",
+    "competitor-pricing": "competitor-profile",
+    "competitor-capability": "competitor-profile",
+    "competitor-positioning": "competitor-profile",
+    "review-corpus": "review-corpus",
+    "market-sizing": "market-sizing",
+    "frontmatter": "canvas-frontmatter",
+    "buyer-language": "competitor-profile",
+    "technographic": "competitor-profile",
+    "hiring-signal": "competitor-profile",
+    "news-intent": "competitor-profile",
+}
+
+# Niche subdirectory → schema data type
+DIRECTORY_INFERENCE_MAP = {
+    "02-competitor-intel": "competitor-profile",
+    "04-voice-of-customer": "review-corpus",
+}
+
+# Subdirectory prefixes that mark processing directories (skip these)
+SKIP_DIR_PREFIXES = frozenset({
+    "_canvas", "_raw", "_archive", "_backup",
+})
+
 
 # ============================================================================
 # HELP TEXT
@@ -71,329 +105,437 @@ def print_help():
     help_text = """\
 %s -- Validate structured data files against schema definitions
 
-USAGE
+USAGE (batch mode: scan entire niche directories)
+    ./%s --all [--verbose] [--schema-dir PATH]
+    ./%s --niche N-XXX [--verbose] [--schema-dir PATH]
+
+USAGE (single-file mode: validate one file)
     ./%s DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]
 
-ARGUMENTS
+ARGUMENTS (single-file mode)
     DATA_TYPE   One of: %s
     FILE_PATH   Path to the structured data file (YAML) to validate
 
 OPTIONS
+    --all               Validate ALL niche canvases in research/
+    --niche N-XXX       Validate a single niche canvas
+    --verbose           Print detailed error information in batch mode
     --schema-dir PATH   Path to schema directory (default: schemas/ under
                         the niche-program root)
-    --dry-run           Load schema and data file, report what would be
-                        checked, then exit 0 without performing validation.
+    --dry-run           (single-file mode) Load schema and data file, report
+                        what would be checked, then exit 0.
     --help, -h          Show this help message and exit.
-
-DATA TYPES
-    competitor-profile    Competitor profile (profile, pricing, tech stack)
-    review-corpus        Review corpus (reviews, sources, themes)
-    market-sizing        Market sizing (TAM, geographic scope, concentration)
-    canvas-frontmatter   Canvas frontmatter (scores, evidence, metrics)
 
 EXIT CODES
     0  PASS               All checks passed, no issues.
-    1  FAIL               Blocking violations found (required missing,
-                          type mismatch, enum violation, range violation,
-                          format violation, or custom rule ERROR).
-    2  PASS_WITH_WARNINGS Non-blocking issues found (optional missing
-                          fields, warnings, custom rule WARNING).
+    1  FAIL               Blocking violations found.
+    2  PASS_WITH_WARNINGS Non-blocking issues found.
     3  INTERNAL_ERROR     Script bug, corrupted YAML, or missing dependency.
-                          Escalate to Wesley.
     4  INVALID_INPUT      Invalid arguments, unknown data type, or file
-                          not found. Fix inputs and re-run.
+                          not found.
 
 OUTPUT
     Structured JSON to stdout. Human-readable logs to stderr.
-
-EXAMPLES
-    # Basic validation
-    ./%s competitor-profile \
-        N-001/02-competitor-intel/N-001-competitor-profile-syncgtm-v1.yaml
-
-    # Custom schema directory
-    ./%s review-corpus path/to/data.yaml --schema-dir /custom/schemas
-
-    # Dry run
-    ./%s market-sizing path/to/data.yaml --dry-run
-
-    # Canvas frontmatter
-    ./%s canvas-frontmatter N-001/_canvas/frontmatter-N-001.yaml
 """ % (
-    SCRIPT_NAME, SCRIPT_NAME,
+    SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME,
     ", ".join(sorted(VALID_DATA_TYPES)),
-    SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME
+    SCRIPT_NAME, SCRIPT_NAME, SCRIPT_NAME
 )
     print(help_text, end="")
     sys.exit(0)
 
 
 # ============================================================================
-# ARGUMENT PARSING
+# SCAN MODE — Infer data type from file path
 # ============================================================================
 
-def parse_validate_args():
+def infer_data_type_from_path(file_path: Path, niche_dir: Path):
     """
-    Parse command-line arguments for validate-schema.
+    Infer the schema data type for a YAML file based on its filename and
+    directory location within the niche.
 
-    Returns:
-        (data_type, file_path: Path, schema_dir: Optional[Path], dry_run: bool)
+    Returns a data type string (key into DATA_TYPE_SCHEMA_MAP) or None
+    if no schema could be inferred.
     """
-    args = sys.argv[1:]
+    stem = file_path.stem  # e.g., N-001-competitor-pricing-syncgtm-v1
 
-    if not args or "--help" in args or "-h" in args:
-        print_help()
+    # 1. Check for special files (trace-map.yaml, frontmatter)
+    if stem == "trace-map":
+        return None  # Handled separately by validate_trace_map()
+    if stem.startswith("frontmatter-"):
+        return "canvas-frontmatter"
 
-    dry_run = "--dry-run" in args
-    if dry_run:
-        args.remove("--dry-run")
-
-    schema_dir = None
-    if "--schema-dir" in args:
-        idx = args.index("--schema-dir")
-        if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
-            schema_dir = Path(args[idx + 1]).resolve()
-            args = args[:idx] + args[idx+2:]
-        else:
-            emit_log("ERROR", "--schema-dir requires a path argument")
-            emit_result(ExitCode.INVALID_INPUT, {
-                "error": "--schema-dir requires a path argument",
-                "usage": "%s DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]" % SCRIPT_NAME
-            })
-
-    if len(args) < 2:
-        emit_log("ERROR", "Missing required positional arguments")
-        emit_result(ExitCode.INVALID_INPUT, {
-            "error": "Missing required positional arguments: DATA_TYPE FILE_PATH",
-            "usage": "%s DATA_TYPE FILE_PATH [--schema-dir PATH] [--dry-run]" % SCRIPT_NAME,
-            "valid_data_types": sorted(VALID_DATA_TYPES)
-        })
-
-    data_type = args[0]
-    file_path_arg = args[1]
-
-    if data_type not in VALID_DATA_TYPES:
-        emit_log("ERROR", "Unknown DATA_TYPE: '%s'" % data_type)
-        emit_result(ExitCode.INVALID_INPUT, {
-            "error": "Unknown DATA_TYPE: '%s'" % data_type,
-            "valid_data_types": sorted(VALID_DATA_TYPES)
-        })
-
-    data_file = Path(file_path_arg).resolve()
-    # P1-11: Reject paths outside project directory
+    # 2. Check parent directory name
     try:
-        data_file.relative_to(PROGRAM_ROOT)
+        rel = file_path.relative_to(niche_dir)
+        parent_dir = rel.parent.name if rel.parent else ""
+        if parent_dir in DIRECTORY_INFERENCE_MAP:
+            return DIRECTORY_INFERENCE_MAP[parent_dir]
     except ValueError:
-        emit_log("ERROR", "File path is outside project directory: %s" % data_file)
-        emit_result(ExitCode.INVALID_INPUT, {
-            "error": "File path is outside project directory: %s" % str(data_file),
-            "file_path": repo_relative_path(data_file),
-            "program_root": str(PROGRAM_ROOT)
-        })
-    if not data_file.exists():
-        emit_log("ERROR", "File not found: %s" % data_file)
-        emit_result(ExitCode.INVALID_INPUT, {
-            "error": "File not found: %s" % str(data_file),
-            "file_path": repo_relative_path(data_file)
-        })
+        pass
 
-    if not data_file.is_file():
-        emit_log("ERROR", "Path is not a file: %s" % data_file)
-        emit_result(ExitCode.INVALID_INPUT, {
-            "error": "Path is not a file: %s" % str(data_file)
-        })
+    # 3. Check for descriptive keywords in the stem (after stripping
+    #    niche_id prefix like N-001- or CAL-A-)
+    desc_part = stem
+    parts = stem.split("-", 2)
+    if len(parts) >= 3 and re.match(r"^(N-\d{3}|CAL-[AB])$", parts[0] + "-" + parts[1][:0]):
+        desc_part = parts[1] + "-" + parts[2]
+    elif len(parts) >= 2 and re.match(r"^(N-\d{3}|CAL-[AB])$", parts[0]):
+        desc_part = parts[1] if len(parts) > 1 else ""
 
-    return data_type, data_file, schema_dir, dry_run
+    for keyword, data_type in FILENAME_INFERENCE_MAP.items():
+        if keyword in desc_part.lower():
+            return data_type
+
+    # 4. Check any keyword in full stem
+    for keyword, data_type in FILENAME_INFERENCE_MAP.items():
+        if keyword in stem.lower():
+            return data_type
+
+    return None
 
 
 # ============================================================================
-# SCHEMA LOADING & STRUCTURE VALIDATION
+# TRACE-MAP VALIDATION (against trace-map-schema.yaml)
 # ============================================================================
 
-def load_and_validate_schema(data_type, schema_dir=None):
+# Minimal required fields for trace-map.yaml claims structure
+TRACE_MAP_REQUIRED_TOP = frozenset({"niche_id", "generated_by", "generated_at",
+                                     "methodology_version", "claims"})
+TRACE_MAP_CLAIM_REQUIRED = frozenset({"claim_id", "claim_text", "canvas_section",
+                                       "evidence_grade", "sources"})
+TRACE_MAP_SOURCE_REQUIRED = frozenset({"source_file", "fetch_date",
+                                        "freshness_status", "fresh_until"})
+
+
+def validate_trace_map_structure(trace_map_path: Path):
     """
-    Load the schema definition file for the given data type.
+    Validate trace-map.yaml directly against the expected structure defined
+    in trace-map-schema.yaml.  Handles the list-format item_schema that
+    differs from the competitor-profile schema format.
 
-    Returns:
-        (schema_data: dict, schema_path: Path)
+    Returns (exit_code, result_dict).
     """
-    if schema_dir is None:
-        schema_dir = SCHEMAS_DIR
+    violations = []
+    warnings_list = []
 
-    schema_filename = DATA_TYPE_SCHEMA_MAP[data_type]
-    schema_path = schema_dir / schema_filename
+    try:
+        data = load_yaml_safe(trace_map_path)
+    except ValueError as e:
+        emit_log("ERROR", f"trace-map.yaml corrupted: {e}")
+        return ExitCode.INTERNAL_ERROR, {
+            "file": repo_relative_path(trace_map_path),
+            "error": f"trace-map.yaml corrupted: {e}",
+        }
 
+    if data is None:
+        emit_log("WARNING", "trace-map.yaml not found or empty")
+        return ExitCode.INVALID_INPUT, {
+            "file": repo_relative_path(trace_map_path),
+            "error": "trace-map.yaml not found or empty",
+        }
+
+    if not isinstance(data, dict):
+        violations.append({
+            "field": "(root)", "path": "(root)",
+            "violation_type": "TYPE_MISMATCH",
+            "expected": "dict", "actual": type(data).__name__,
+            "message": "trace-map.yaml root must be a dict",
+        })
+        # Check claims section with relaxed requirements (minimal)
+
+    # Check top-level fields
+    if isinstance(data, dict):
+        for key in TRACE_MAP_REQUIRED_TOP:
+            if key not in data or data[key] is None:
+                violations.append({
+                    "field": key, "path": key,
+                    "violation_type": "REQUIRED_MISSING",
+                    "expected": "present", "actual": "missing",
+                    "message": f"Required top-level field '{key}' is missing",
+                })
+
+        # Validate claims array
+        claims = data.get("claims", [])
+        if not isinstance(claims, list):
+            violations.append({
+                "field": "claims", "path": "claims",
+                "violation_type": "TYPE_MISMATCH",
+                "expected": "list", "actual": type(claims).__name__,
+                "message": "'claims' must be a list",
+            })
+        else:
+            if len(claims) == 0:
+                warnings_list.append({
+                    "field": "claims", "path": "claims",
+                    "violation_type": "MIN_ITEMS",
+                    "expected": ">= 1", "actual": "0",
+                    "message": "Claims list is empty",
+                })
+            for i, claim in enumerate(claims):
+                if not isinstance(claim, dict):
+                    violations.append({
+                        "field": "claims", "path": f"claims[{i}]",
+                        "violation_type": "TYPE_MISMATCH",
+                        "expected": "dict", "actual": type(claim).__name__,
+                        "message": f"claims[{i}] must be a dict",
+                    })
+                    continue
+                for ckey in TRACE_MAP_CLAIM_REQUIRED:
+                    if ckey not in claim or claim[ckey] is None:
+                        violations.append({
+                            "field": ckey, "path": f"claims[{i}].{ckey}",
+                            "violation_type": "REQUIRED_MISSING",
+                            "expected": "present", "actual": "missing",
+                            "message": f"claims[{i}] missing required '{ckey}'",
+                        })
+                # Validate evidence_grade enum
+                eg = claim.get("evidence_grade")
+                if eg and eg not in ("[P]", "[E]", "[H]", "[S]"):
+                    violations.append({
+                        "field": "evidence_grade", "path": f"claims[{i}].evidence_grade",
+                        "violation_type": "ENUM_VIOLATION",
+                        "expected": "[P], [E], [H], [S]", "actual": str(eg),
+                        "message": f"claims[{i}] evidence_grade '{eg}' not in [P]/[E]/[H]/[S]",
+                    })
+                # Validate sources
+                sources = claim.get("sources", [])
+                if not isinstance(sources, list):
+                    violations.append({
+                        "field": "sources", "path": f"claims[{i}].sources",
+                        "violation_type": "TYPE_MISMATCH",
+                        "expected": "list", "actual": type(sources).__name__,
+                        "message": f"claims[{i}].sources must be a list",
+                    })
+                else:
+                    for j, src in enumerate(sources):
+                        if not isinstance(src, dict):
+                            violations.append({
+                                "field": "sources", "path": f"claims[{i}].sources[{j}]",
+                                "violation_type": "TYPE_MISMATCH",
+                                "expected": "dict", "actual": type(src).__name__,
+                                "message": f"claims[{i}].sources[{j}] must be a dict",
+                            })
+                            continue
+                        for skey in TRACE_MAP_SOURCE_REQUIRED:
+                            if skey not in src or src[skey] is None:
+                                violations.append({
+                                    "field": skey, "path": f"claims[{i}].sources[{j}].{skey}",
+                                    "violation_type": "REQUIRED_MISSING",
+                                    "expected": "present", "actual": "missing",
+                                    "message": f"claims[{i}].sources[{j}] missing '{skey}'",
+                                })
+                        # Validate freshness_status
+                        fs = src.get("freshness_status")
+                        if fs and fs not in ("FRESH", "STALE", "EXPIRED"):
+                            violations.append({
+                                "field": "freshness_status",
+                                "path": f"claims[{i}].sources[{j}].freshness_status",
+                                "violation_type": "ENUM_VIOLATION",
+                                "expected": "FRESH, STALE, EXPIRED", "actual": str(fs),
+                                "message": f"freshness_status '{fs}' not valid",
+                            })
+
+    # Assemble verdict
+    has_blocking = any(v["violation_type"] in (
+        "REQUIRED_MISSING", "TYPE_MISMATCH", "ENUM_VIOLATION") for v in violations)
+    has_warnings = bool(warnings_list)
+
+    if has_blocking:
+        verdict = "FAIL"
+        exit_code = ExitCode.BLOCKED
+    elif has_warnings:
+        verdict = "PASS_WITH_WARNINGS"
+        exit_code = ExitCode.WARNING
+    else:
+        verdict = "PASS"
+        exit_code = ExitCode.SUCCESS
+
+    result = {
+        "verdict": verdict,
+        "schema_used": "trace-map-schema.yaml",
+        "file": repo_relative_path(trace_map_path),
+        "violations": len(violations),
+        "warnings": len(warnings_list),
+    }
+    if violations:
+        result["violations_detail"] = violations
+    if warnings_list:
+        result["warnings_detail"] = warnings_list
+
+    return exit_code, result
+
+
+# ============================================================================
+# EVIDENCE-CLAIMS.JSON VALIDATION
+# ============================================================================
+
+def validate_evidence_claims(claims_path: Path):
+    """
+    Validate evidence-claims.json structure (if it exists).
+
+    Expected structure: a JSON list where each entry is an object with at
+    least a 'claim_id' field.  Optional file — returns PASS if not found.
+    """
+    if not claims_path.exists():
+        emit_log("INFO", f"evidence-claims.json not found at {claims_path} — skipping")
+        return ExitCode.SUCCESS, {
+            "verdict": "NOT_FOUND",
+            "file": repo_relative_path(claims_path),
+            "note": "evidence-claims.json not found, skipping",
+        }
+
+    violations = []
+
+    try:
+        with open(claims_path, "r") as f:
+            data = json_module.load(f)
+    except (json_module.JSONDecodeError, OSError) as e:
+        emit_log("ERROR", f"evidence-claims.json corrupted: {e}")
+        return ExitCode.INTERNAL_ERROR, {
+            "file": repo_relative_path(claims_path),
+            "error": f"JSON parse error: {e}",
+        }
+
+    if not isinstance(data, list):
+        violations.append({
+            "field": "(root)", "path": "(root)",
+            "violation_type": "TYPE_MISMATCH",
+            "expected": "list", "actual": type(data).__name__,
+            "message": "evidence-claims.json root must be a list",
+        })
+    else:
+        for i, entry in enumerate(data):
+            if not isinstance(entry, dict):
+                violations.append({
+                    "field": f"[{i}]", "path": f"[{i}]",
+                    "violation_type": "TYPE_MISMATCH",
+                    "expected": "dict", "actual": type(entry).__name__,
+                    "message": f"Entry [{i}] must be a dict",
+                })
+                continue
+            if "claim_id" not in entry:
+                violations.append({
+                    "field": "claim_id", "path": f"[{i}].claim_id",
+                    "violation_type": "REQUIRED_MISSING",
+                    "expected": "present", "actual": "missing",
+                    "message": f"Entry [{i}] missing required 'claim_id'",
+                })
+
+    if violations:
+        result = {
+            "verdict": "FAIL",
+            "file": repo_relative_path(claims_path),
+            "violations": len(violations),
+            "violations_detail": violations,
+        }
+        return ExitCode.BLOCKED, result
+
+    return ExitCode.SUCCESS, {
+        "verdict": "PASS",
+        "file": repo_relative_path(claims_path),
+        "claims_validated": len(data),
+    }
+
+
+# ============================================================================
+# NICHE SCANNING AND VALIDATION
+# ============================================================================
+
+def validate_single_file(file_path: Path, data_type: str, schemas_dir: Path,
+                         verbose: bool):
+    """
+    Validate a single YAML file against the schema for data_type.
+
+    Returns (exit_code, result_dict).
+    """
+    schema_filename = DATA_TYPE_SCHEMA_MAP.get(data_type)
+    if not schema_filename:
+        return ExitCode.INVALID_INPUT, {
+            "error": f"No schema for data type '{data_type}'",
+            "file": repo_relative_path(file_path),
+        }
+
+    schema_path = schemas_dir / schema_filename
     if not schema_path.exists():
-        emit_log("ERROR", "Schema file not found: %s" % schema_path)
-        emit_result(ExitCode.INTERNAL_ERROR, {
-            "error": "Schema file not found: %s" % str(schema_path),
-            "schema_file": repo_relative_path(schema_path)
-        })
+        return ExitCode.INTERNAL_ERROR, {
+            "error": f"Schema not found: {schema_path}",
+            "file": repo_relative_path(schema_path),
+        }
 
     try:
         schema_data = load_yaml_safe(schema_path)
     except ValueError as e:
-        emit_log("ERROR", "Schema file corrupted: %s — %s" % (schema_path, e))
-        emit_result(ExitCode.INTERNAL_ERROR, {
-            "error": "Schema file corrupted: %s" % str(schema_path),
-            "details": str(e),
+        return ExitCode.INTERNAL_ERROR, {
+            "error": f"Schema corrupted: {e}",
             "schema_file": repo_relative_path(schema_path),
-        })
-    if schema_data is None:
-        emit_log("ERROR", "Failed to load schema (empty or missing): %s" % schema_path)
-        emit_result(ExitCode.INTERNAL_ERROR, {
-            "error": "Failed to load schema: %s" % str(schema_path),
-            "schema_file": repo_relative_path(schema_path)
-        })
+        }
 
-    _validate_schema_structure(schema_data, schema_path)
+    if schema_data is None or not isinstance(schema_data, dict):
+        return ExitCode.INTERNAL_ERROR, {
+            "error": "Schema is empty or not a dict",
+            "schema_file": repo_relative_path(schema_path),
+        }
 
-    schema_meta = schema_data.get("schema", {})
-    emit_log("INFO", "Loaded schema: %s v%s" % (
-        schema_meta.get("name", schema_filename),
-        schema_meta.get("version", "?")
-    ))
+    try:
+        data = load_yaml_safe(file_path)
+    except ValueError as e:
+        emit_log("ERROR", f"YAML parse error in {file_path}: {e}")
+        return ExitCode.INTERNAL_ERROR, {
+            "error": f"YAML parse error: {e}",
+            "file": repo_relative_path(file_path),
+        }
 
-    return schema_data, schema_path
+    if data is None:
+        return ExitCode.INVALID_INPUT, {
+            "error": "Data file is empty",
+            "file": repo_relative_path(file_path),
+        }
 
+    if not isinstance(data, dict):
+        return ExitCode.INVALID_INPUT, {
+            "error": f"Data file root must be a dict, got {type(data).__name__}",
+            "file": repo_relative_path(file_path),
+        }
 
-def _validate_schema_structure(schema_data, schema_path):
-    """Validate that the loaded schema has the required structure."""
+    schema_fields = schema_data.get("fields", [])
+    violations = []
+    warnings_list = []
+    required_present = []
+    optional_missing = []
 
-    if not isinstance(schema_data, dict):
-        raise ValueError("Schema at %s must be a mapping (dict), got %s" % (
-            schema_path, type(schema_data).__name__))
+    # Use existing recursive validation
+    validate_recursive(data, schema_fields, "",
+                       violations, warnings_list,
+                       required_present, optional_missing)
 
-    if "schema" not in schema_data:
-        raise ValueError("Schema at %s missing required top-level key 'schema'" % schema_path)
+    # Custom validation for known data types
+    custom_err, custom_warn = run_custom_validations(
+        data_type, data, violations, warnings_list)
 
-    schema_meta = schema_data["schema"]
-    if not isinstance(schema_meta, dict):
-        raise ValueError("Schema at %s.schema must be a mapping, got %s" % (
-            schema_path, type(schema_meta).__name__))
+    ec, result = assemble_verdict(
+        violations, warnings_list,
+        required_present, optional_missing,
+        data_type, file_path, schema_path)
+    result["custom_errors"] = custom_err
+    result["custom_warnings"] = custom_warn
+    result["file"] = repo_relative_path(file_path)
+    result["schema_file"] = repo_relative_path(schema_path)
+    result["schema_name"] = schema_data.get("schema", {}).get("name", schema_filename)
 
-    for key in ("name", "version", "source"):
-        if key not in schema_meta:
-            raise ValueError("Schema at %s missing schema.%s" % (schema_path, key))
+    if verbose:
+        result["violations"] = violations
+        result["warnings"] = warnings_list
 
-    if "fields" not in schema_data or not isinstance(schema_data["fields"], list):
-        raise ValueError("Schema at %s missing or invalid 'fields' list" % schema_path)
+    return ec, result
 
-    for i, field in enumerate(schema_data["fields"]):
-        if not isinstance(field, dict):
-            raise ValueError("Schema at %s field[%d] must be a mapping, got %s" % (
-                schema_path, i, type(field).__name__))
-        for key in ("field", "type", "required"):
-            if key not in field:
-                raise ValueError("Schema at %s field[%d] ('%s') missing required key '%s'" % (
-                    schema_path, i, field.get("field", "?"), key))
-
-    return True
-
-
-# ============================================================================
-# TYPE CHECKING
-# ============================================================================
-
-_STRING_SUBTYPES = frozenset({
-    "string (url)", "string (iso 8601 date)", "string (duration)",
-    "string (path)",
-})
-
-
-def _check_value_type(value, type_str):
-    """
-    Check that value matches the expected type_str.
-
-    Supports: string, string (URL), string (ISO 8601 date), string (duration),
-    string (path), integer, number, float, boolean, list, array, object, dict,
-    array of strings, array of <type>.
-
-    Returns True if the value matches the type, False otherwise.
-    """
-    if type_str is None:
-        return True
-
-    type_lower = type_str.lower().strip()
-
-    if type_lower.startswith("array of "):
-        item_type = type_lower[9:].strip()
-        if not isinstance(value, list):
-            return False
-        return all(_check_value_type(v, item_type) for v in value)
-
-    if type_lower in _STRING_SUBTYPES:
-        return isinstance(value, str)
-    elif type_lower == "string":
-        return isinstance(value, str)
-    elif type_lower == "integer":
-        return isinstance(value, int) and not isinstance(value, bool)
-    elif type_lower in ("number", "float"):
-        return isinstance(value, (int, float)) and not isinstance(value, bool)
-    elif type_lower == "boolean":
-        return isinstance(value, bool)
-    elif type_lower in ("list", "array"):
-        return isinstance(value, list)
-    elif type_lower in ("dict", "object"):
-        return isinstance(value, dict)
-
-    return True
-
-
-def _validate_string_format(value, type_str):
-    """
-    Validate string subtype format.
-
-    Returns (is_valid: bool, error_message: Optional[str])
-    """
-    type_lower = type_str.lower().strip()
-
-    if type_lower == "string (iso 8601 date)":
-        if not isinstance(value, str):
-            return False, "Not a string"
-        if re.match(r"^\d{4}-\d{2}-\d{2}$", value):
-            return True, None
-        try:
-            datetime.fromisoformat(value)
-            return True, None
-        except ValueError:
-            return False, "'%s' is not a valid ISO 8601 date (expected YYYY-MM-DD)" % value
-
-    elif type_lower == "string (url)":
-        if not isinstance(value, str):
-            return False, "Not a string"
-        parsed = urlparse(value)
-        if parsed.scheme in ("http", "https") and bool(parsed.netloc):
-            return True, None
-        return False, "'%s' is not a valid URL (expected http/https scheme)" % value
-
-    elif type_lower == "string (duration)":
-        if not isinstance(value, str):
-            return False, "Not a string"
-        if re.match(r"^\d+d$", value):
-            return True, None
-        return False, "'%s' is not a valid duration (expected format like '90d')" % value
-
-    elif type_lower == "string (path)":
-        return isinstance(value, str), None
-
-    return True, None
-
-
-# ============================================================================
-# RECURSIVE FIELD-BY-FIELD VALIDATION
-# ============================================================================
 
 def validate_recursive(data, schema_fields, path_prefix="",
                        violations=None, warnings=None,
                        required_present=None, optional_missing=None):
     """
     Recursively validate data against a list of schema field definitions.
-
-    Supports:
-    - Leaf fields: required, type, enum, range, string format checks
-    - Object fields (with 'fields'/'children'): recurse into nested dict
-    - Array fields (with 'items'/'item_schema'): recurse into each item
+    (Copied from validate-schema single-file mode for self-contained operation.)
     """
     if violations is None:
         violations = []
@@ -538,6 +680,9 @@ def _validate_array_items(items, item_schema, field_name, full_path,
                           violations, warnings,
                           required_present, optional_missing):
     """Validate each item in an array against the item schema."""
+    # Handle trace-map-style item_schema (list of field defs directly)
+    if isinstance(item_schema, list):
+        item_schema = {"type": "object", "fields": item_schema}
 
     items_type = item_schema.get("type", "").lower().strip()
     items_required = item_schema.get("required", [])
@@ -574,14 +719,88 @@ def _validate_array_items(items, item_schema, field_name, full_path,
 
 
 # ============================================================================
+# TYPE CHECKING
+# ============================================================================
+
+_STRING_SUBTYPES = frozenset({
+    "string (url)", "string (iso 8601 date)", "string (duration)",
+    "string (path)",
+})
+
+
+def _check_value_type(value, type_str):
+    """Check that value matches the expected type_str."""
+    if type_str is None:
+        return True
+
+    type_lower = type_str.lower().strip()
+
+    if type_lower.startswith("array of "):
+        item_type = type_lower[9:].strip()
+        if not isinstance(value, list):
+            return False
+        return all(_check_value_type(v, item_type) for v in value)
+
+    if type_lower in _STRING_SUBTYPES:
+        return isinstance(value, str)
+    elif type_lower == "string":
+        return isinstance(value, str)
+    elif type_lower == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    elif type_lower in ("number", "float"):
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    elif type_lower == "boolean":
+        return isinstance(value, bool)
+    elif type_lower in ("list", "array"):
+        return isinstance(value, list)
+    elif type_lower in ("dict", "object"):
+        return isinstance(value, dict)
+
+    return True
+
+
+def _validate_string_format(value, type_str):
+    """Validate string subtype format."""
+    type_lower = type_str.lower().strip()
+
+    if type_lower == "string (iso 8601 date)":
+        if not isinstance(value, str):
+            return False, "Not a string"
+        if re.match(r"^\d{4}-\d{2}-\d{2}$", value):
+            return True, None
+        try:
+            datetime.fromisoformat(value)
+            return True, None
+        except ValueError:
+            return False, "'%s' is not a valid ISO 8601 date (expected YYYY-MM-DD)" % value
+
+    elif type_lower == "string (url)":
+        if not isinstance(value, str):
+            return False, "Not a string"
+        parsed = urlparse(value)
+        if parsed.scheme in ("http", "https") and bool(parsed.netloc):
+            return True, None
+        return False, "'%s' is not a valid URL (expected http/https scheme)" % value
+
+    elif type_lower == "string (duration)":
+        if not isinstance(value, str):
+            return False, "Not a string"
+        if re.match(r"^\d+d$", value):
+            return True, None
+        return False, "'%s' is not a valid duration (expected format like '90d')" % value
+
+    elif type_lower == "string (path)":
+        return isinstance(value, str), None
+
+    return True, None
+
+
+# ============================================================================
 # CUSTOM VALIDATION RULES PER DATA TYPE
 # ============================================================================
 
 def run_custom_validations(data_type, data, violations, warnings):
-    """Run data-type-specific custom validation rules.
-
-    Returns (custom_error_count, custom_warning_count)
-    """
+    """Run data-type-specific custom validation rules."""
     dispatch = {
         "competitor-profile": _custom_cp,
         "review-corpus": _custom_rc,
@@ -593,8 +812,6 @@ def run_custom_validations(data_type, data, violations, warnings):
         return fn(data, violations, warnings)
     return 0, 0
 
-
-# ---- Competitor Profile -----------------------------------------------------
 
 def _custom_cp(data, violations, warnings):
     """Competitor-profile custom validation rules."""
@@ -723,13 +940,10 @@ def _custom_cp(data, violations, warnings):
     return ec, wc
 
 
-# ---- Review Corpus -----------------------------------------------------------
-
 def _custom_rc(data, violations, warnings):
     """Review-corpus custom validation rules."""
     ec = wc = 0
 
-    # total_reviews must equal sum of source counts
     sources = data.get("sources", {})
     total = data.get("total_reviews")
     if isinstance(sources, dict) and isinstance(total, (int, float)):
@@ -749,7 +963,6 @@ def _custom_rc(data, violations, warnings):
             })
             ec += 1
 
-    # Per-review checks: rating 1-5, unique review_id
     reviews = data.get("reviews", [])
     if isinstance(reviews, list):
         seen_ids = set()
@@ -791,7 +1004,6 @@ def _custom_rc(data, violations, warnings):
             })
             ec += 1
 
-    # Warning: theme percentages should be 0-100
     ta = data.get("theme_analysis", {})
     if isinstance(ta, dict):
         for lk in ("top_praise_themes", "top_complaint_themes"):
@@ -814,8 +1026,6 @@ def _custom_rc(data, violations, warnings):
     return ec, wc
 
 
-# ---- Market Sizing -----------------------------------------------------------
-
 def _custom_ms(data, violations, warnings):
     """Market-sizing custom validation rules."""
     ec = wc = 0
@@ -831,7 +1041,6 @@ def _custom_ms(data, violations, warnings):
         })
         return 1, 0
 
-    # revenue_eur must be non-negative
     rev = tam.get("revenue_eur")
     if isinstance(rev, (int, float)) and rev < 0:
         violations.append({
@@ -843,7 +1052,6 @@ def _custom_ms(data, violations, warnings):
         })
         ec += 1
 
-    # companies must be non-negative
     comp = tam.get("companies")
     if isinstance(comp, (int, float)) and comp < 0:
         violations.append({
@@ -855,7 +1063,6 @@ def _custom_ms(data, violations, warnings):
         })
         ec += 1
 
-    # tam.sources: at least 1 entry
     tsrc = tam.get("sources", [])
     if isinstance(tsrc, list) and len(tsrc) == 0:
         violations.append({
@@ -867,7 +1074,6 @@ def _custom_ms(data, violations, warnings):
         })
         ec += 1
 
-    # niche_existence_proof: at least 1 entry
     proofs = data.get("niche_existence_proof", [])
     if isinstance(proofs, list) and len(proofs) == 0:
         violations.append({
@@ -879,7 +1085,6 @@ def _custom_ms(data, violations, warnings):
         })
         ec += 1
 
-    # WARNING: companies_range format
     cr = tam.get("companies_range")
     if isinstance(cr, str) and not re.match(r"^[0-9,]+-[0-9,]+$", cr):
         warnings.append({
@@ -894,13 +1099,10 @@ def _custom_ms(data, violations, warnings):
     return ec, wc
 
 
-# ---- Canvas Frontmatter ------------------------------------------------------
-
 def _custom_cf(data, violations, warnings):
     """Canvas-frontmatter custom validation rules."""
     ec = wc = 0
 
-    # composite_score 0-10 (ERROR)
     cs = data.get("composite_score")
     if isinstance(cs, (int, float)) and not isinstance(cs, bool):
         if cs < 0 or cs > 10:
@@ -913,7 +1115,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # composite_score_raw 0-10 (ERROR)
     csr = data.get("composite_score_raw")
     if isinstance(csr, (int, float)) and not isinstance(csr, bool):
         if csr < 0 or csr > 10:
@@ -926,7 +1127,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # sub-scores 1-10 (ERROR)
     scores = data.get("scores", {})
     if isinstance(scores, dict):
         for sf in ("structural_attractiveness", "warm_access",
@@ -943,7 +1143,6 @@ def _custom_cf(data, violations, warnings):
                     })
                     ec += 1
 
-    # evidence_quality 0-100 (ERROR)
     eq = data.get("evidence_quality")
     if isinstance(eq, (int, float)) and not isinstance(eq, bool):
         if eq < 0 or eq > 100:
@@ -956,7 +1155,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # freshness_score 0-100 (ERROR)
     fs = data.get("freshness_score")
     if isinstance(fs, (int, float)) and not isinstance(fs, bool):
         if fs < 0 or fs > 100:
@@ -969,7 +1167,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # high_uncertainty consistency check (ERROR)
     ed = data.get("evidence_distribution", {})
     hu = data.get("high_uncertainty")
     if isinstance(ed, dict) and isinstance(hu, bool):
@@ -986,7 +1183,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # evidence_quality consistency with evidence_distribution (ERROR)
     if isinstance(ed, dict) and isinstance(eq, (int, float)):
         total_pe = (ed.get("grade_P", 0) or 0) + (ed.get("grade_E", 0) or 0)
         if total_pe == 0 and eq > 0:
@@ -999,7 +1195,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # open_questions >= 0 (ERROR)
     oq = data.get("open_questions")
     if isinstance(oq, (int, float)) and oq < 0:
         violations.append({
@@ -1011,7 +1206,6 @@ def _custom_cf(data, violations, warnings):
         })
         ec += 1
 
-    # credit_consumed >= 0 (ERROR)
     cc = data.get("credit_consumed", {})
     if isinstance(cc, dict):
         fc = cc.get("firecrawl")
@@ -1035,7 +1229,6 @@ def _custom_cf(data, violations, warnings):
             })
             ec += 1
 
-    # WARNING: calibration_applied + composite_score == composite_score_raw
     cal = data.get("calibration_applied")
     if (isinstance(cal, bool) and cal
             and isinstance(cs, (int, float)) and isinstance(csr, (int, float))
@@ -1050,7 +1243,6 @@ def _custom_cf(data, violations, warnings):
         })
         wc += 1
 
-    # WARNING: niche_id format check
     nid = data.get("niche_id")
     if isinstance(nid, str) and not re.match(r"^(?:N-\d{3}|CAL-[AB])$", nid):
         warnings.append({
@@ -1077,15 +1269,7 @@ def _count_by_type(violations, vtype):
 def assemble_verdict(violations, warnings,
                      required_present, optional_missing,
                      data_type, file_path, schema_path):
-    """
-    Assemble the validation result and determine the verdict.
-
-    Verdict logic (IMPLEMENTATION-SPEC.md S5.2 Step 4):
-    - REQUIRED_MISSING, TYPE_MISMATCH, ENUM_VIOLATION, RANGE_VIOLATION,
-      FORMAT_VIOLATION, or CUSTOM_RULE ERROR -> FAIL (exit 1)
-    - Only optional missing and warnings -> PASS_WITH_WARNINGS (exit 2)
-    - Nothing -> PASS (exit 0)
-    """
+    """Assemble the validation result and determine the verdict."""
     rm = _count_by_type(violations, "REQUIRED_MISSING")
     tv = _count_by_type(violations, "TYPE_MISMATCH")
     ev = _count_by_type(violations, "ENUM_VIOLATION")
@@ -1098,8 +1282,6 @@ def assemble_verdict(violations, warnings,
 
     if has_blocking:
         verdict = "FAIL"
-        # BLOCKED is used here because the pipeline should not proceed
-        # with invalid data (IMPLEMENTATION-SPEC.md S5.2 Step 4).
         exit_code = ExitCode.BLOCKED
     elif has_warnings_only:
         verdict = "PASS_WITH_WARNINGS"
@@ -1148,24 +1330,315 @@ def _count_fields(schema_fields):
 
 
 # ============================================================================
-# MAIN ENTRY POINT
+# BATCH (--all / --niche) ENTRY POINT
 # ============================================================================
 
-def main():
-    """
-    Main entry point for validate-schema.
+def get_niche_directories():
+    """Return sorted list of non-system niche directories under research/."""
+    from lib.pipeline_ops import _RESEARCH_DIR
+    research_dir = _RESEARCH_DIR
+    niches = []
+    for entry in sorted(research_dir.iterdir()):
+        if entry.is_dir() and re.match(r"^(N-\d{3}|CAL-[AB])$", entry.name):
+            niches.append(entry)
+    return niches
 
-    Flow (from IMPLEMENTATION-SPEC.md S5.2):
-    1. Parse arguments
-    2. Load and validate schema
-    3. Load data file (YAML)
-    3b. Dry-run mode: report what would be checked
-    4. Run base field-by-field validation (recursive)
-    5. Run custom data-type-specific validation
-    6. Assemble result with verdict
-    7. Emit structured JSON to stdout
+
+def scan_and_validate(target_niches, schemas_dir, verbose):
     """
-    # ── Extract --quiet / --agent-mode (consistent with preflight-check) ──
+    Scan and validate all niches in target_niches.
+
+    Args:
+        target_niches: list of Paths to niche directories
+        schemas_dir: Path to schema directory
+        verbose: bool for detailed error output
+
+    Returns (overall_exit_code, aggregated_results).
+    """
+    overall_exit_code = ExitCode.SUCCESS
+    all_results = []
+    total_passed = 0
+    total_failed = 0
+    total_warnings = 0
+    files_checked = 0
+
+    for niche_dir in target_niches:
+        niche_id = niche_dir.name
+        emit_log("INFO", f"Scanning niche: {niche_id} ({niche_dir})")
+
+        # --- Validate trace-map.yaml ---
+        trace_map_path = niche_dir / "_canvas" / "evidence" / "trace-map.yaml"
+        if trace_map_path.exists():
+            tc_exit, tc_result = validate_trace_map_structure(trace_map_path)
+            tc_result["niche_id"] = niche_id
+            tc_result["file_type"] = "trace-map.yaml"
+            all_results.append(tc_result)
+            files_checked += 1
+            if tc_exit.value > 0:
+                if tc_exit.value > overall_exit_code.value:
+                    overall_exit_code = tc_exit
+                total_failed += 1
+                emit_log("WARNING" if tc_exit.value < 2 else "ERROR",
+                         f"  trace-map.yaml: {tc_result['verdict']} ({tc_result.get('violations', '?')} violations)")
+            else:
+                total_passed += 1
+                emit_log("INFO", f"  trace-map.yaml: PASS")
+        else:
+            emit_log("INFO", f"  trace-map.yaml not found (not yet authored)")
+            total_warnings += 1
+
+        # --- Validate evidence-claims.json ---
+        claims_json_path = niche_dir / "_canvas" / "evidence" / "evidence-claims.json"
+        if claims_json_path.exists():
+            cj_exit, cj_result = validate_evidence_claims(claims_json_path)
+            cj_result["niche_id"] = niche_id
+            cj_result["file_type"] = "evidence-claims.json"
+            all_results.append(cj_result)
+            files_checked += 1
+            if cj_exit.value > 0:
+                if cj_exit.value > overall_exit_code.value:
+                    overall_exit_code = cj_exit
+                total_failed += 1
+            else:
+                total_passed += 1
+
+        # --- Validate all YAML files in niche ---
+        yaml_files = []
+        for entry in sorted(niche_dir.rglob("*.yaml")):
+            # Skip tmp files
+            if entry.suffix == ".tmp":
+                continue
+            # Skip hidden/temp
+            if entry.name.startswith("."):
+                continue
+            # Skip directories starting with SKIP_DIR_PREFIXES
+            rel = entry.relative_to(niche_dir)
+            skip = False
+            for part in rel.parts:
+                if part.startswith("_") or part in SKIP_DIR_PREFIXES:
+                    skip = True
+                    break
+            # But DO validate trace-map.yaml (already handled above)
+            if "trace-map" in entry.name:
+                continue
+            if skip:
+                continue
+            yaml_files.append(entry)
+
+        for yf in yaml_files:
+            data_type = infer_data_type_from_path(yf, niche_dir)
+            if data_type is None:
+                emit_log("INFO", f"  SKIP {repo_relative_path(yf)} (no matching schema)")
+                all_results.append({
+                    "file": repo_relative_path(yf),
+                    "niche_id": niche_id,
+                    "verdict": "SKIPPED",
+                    "reason": "No matching schema found for this file",
+                    "file_type": "yaml",
+                })
+                continue
+
+            f_exit, f_result = validate_single_file(yf, data_type, schemas_dir, verbose)
+            f_result["niche_id"] = niche_id
+            f_result["file_type"] = "yaml"
+            all_results.append(f_result)
+            files_checked += 1
+
+            status = "PASS" if f_exit == ExitCode.SUCCESS else (
+                "PASS_WITH_WARNINGS" if f_exit == ExitCode.WARNING else "FAIL")
+            if f_exit.value > 0:
+                if f_exit.value > overall_exit_code.value:
+                    overall_exit_code = f_exit
+                if f_exit == ExitCode.WARNING:
+                    total_warnings += 1
+                else:
+                    total_failed += 1
+            else:
+                total_passed += 1
+
+            emit_log("INFO", f"  {yf.name}: {status}")
+
+    emit_log("INFO", f"Batch validation complete: {total_passed} passed, "
+                     f"{total_failed} failed, {total_warnings} warnings "
+                     f"({files_checked} files)")
+
+    aggregate = {
+        "verdict": "FAIL" if total_failed > 0 else (
+            "PASS_WITH_WARNINGS" if total_warnings > 0 else "PASS"),
+        "mode": "all" if len(target_niches) > 1 else f"niche={target_niches[0].name}",
+        "niches_scanned": len(target_niches),
+        "total_files": files_checked,
+        "passed": total_passed,
+        "failed": total_failed,
+        "warnings": total_warnings,
+        "results": all_results,
+    }
+
+    if verbose:
+        aggregate["niche_directories"] = [str(d) for d in target_niches]
+
+    return overall_exit_code, aggregate
+
+
+# ============================================================================
+# SINGLE-FILE MODE (backward-compatible entry point)
+# ============================================================================
+
+def parse_validate_args():
+    """
+    Parse command-line arguments for validate-schema (single-file mode).
+    Returns (data_type, file_path, schema_dir, dry_run).
+    """
+    args = sys.argv[1:]
+
+    if not args or "--help" in args or "-h" in args:
+        print_help()
+
+    dry_run = "--dry-run" in args
+    if dry_run:
+        args.remove("--dry-run")
+
+    schema_dir = None
+    if "--schema-dir" in args:
+        idx = args.index("--schema-dir")
+        if idx + 1 < len(args) and not args[idx + 1].startswith("--"):
+            schema_dir = Path(args[idx + 1]).resolve()
+            args = args[:idx] + args[idx+2:]
+        else:
+            emit_log("ERROR", "--schema-dir requires a path argument")
+            emit_result(ExitCode.INVALID_INPUT, {
+                "error": "--schema-dir requires a path argument",
+            })
+
+    if len(args) < 2:
+        emit_log("ERROR", "Missing required positional arguments")
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Missing required positional arguments: DATA_TYPE FILE_PATH",
+            "valid_data_types": sorted(VALID_DATA_TYPES)
+        })
+
+    data_type = args[0]
+    file_path_arg = args[1]
+
+    if data_type not in VALID_DATA_TYPES:
+        emit_log("ERROR", "Unknown DATA_TYPE: '%s'" % data_type)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Unknown DATA_TYPE: '%s'" % data_type,
+            "valid_data_types": sorted(VALID_DATA_TYPES)
+        })
+
+    data_file = Path(file_path_arg).resolve()
+    # Reject paths outside project directory
+    try:
+        data_file.relative_to(PROGRAM_ROOT)
+    except ValueError:
+        emit_log("ERROR", "File path is outside project directory: %s" % data_file)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "File path is outside project directory: %s" % str(data_file),
+            "file_path": repo_relative_path(data_file),
+            "program_root": str(PROGRAM_ROOT)
+        })
+    if not data_file.exists():
+        emit_log("ERROR", "File not found: %s" % data_file)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "File not found: %s" % str(data_file),
+            "file_path": repo_relative_path(data_file)
+        })
+
+    if not data_file.is_file():
+        emit_log("ERROR", "Path is not a file: %s" % data_file)
+        emit_result(ExitCode.INVALID_INPUT, {
+            "error": "Path is not a file: %s" % str(data_file)
+        })
+
+    return data_type, data_file, schema_dir, dry_run
+
+
+# ============================================================================
+# SINGLE-FILE: Schema Loading, Validation, and Main
+# ============================================================================
+
+def load_and_validate_schema(data_type, schema_dir=None):
+    """Load the schema definition file for the given data type."""
+    if schema_dir is None:
+        schema_dir = SCHEMAS_DIR
+
+    schema_filename = DATA_TYPE_SCHEMA_MAP[data_type]
+    schema_path = schema_dir / schema_filename
+
+    if not schema_path.exists():
+        emit_log("ERROR", "Schema file not found: %s" % schema_path)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Schema file not found: %s" % str(schema_path),
+            "schema_file": repo_relative_path(schema_path)
+        })
+
+    try:
+        schema_data = load_yaml_safe(schema_path)
+    except ValueError as e:
+        emit_log("ERROR", "Schema file corrupted: %s - %s" % (schema_path, e))
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Schema file corrupted: %s" % str(schema_path),
+            "details": str(e),
+            "schema_file": repo_relative_path(schema_path),
+        })
+    if schema_data is None:
+        emit_log("ERROR", "Failed to load schema (empty or missing): %s" % schema_path)
+        emit_result(ExitCode.INTERNAL_ERROR, {
+            "error": "Failed to load schema: %s" % str(schema_path),
+            "schema_file": repo_relative_path(schema_path)
+        })
+
+    _validate_schema_structure(schema_data, schema_path)
+
+    schema_meta = schema_data.get("schema", {})
+    emit_log("INFO", "Loaded schema: %s v%s" % (
+        schema_meta.get("name", schema_filename),
+        schema_meta.get("version", "?")
+    ))
+
+    return schema_data, schema_path
+
+
+def _validate_schema_structure(schema_data, schema_path):
+    """Validate that the loaded schema has the required structure."""
+    if not isinstance(schema_data, dict):
+        raise ValueError("Schema at %s must be a mapping (dict), got %s" % (
+            schema_path, type(schema_data).__name__))
+
+    if "schema" not in schema_data:
+        raise ValueError("Schema at %s missing required top-level key 'schema'" % schema_path)
+
+    schema_meta = schema_data["schema"]
+    if not isinstance(schema_meta, dict):
+        raise ValueError("Schema at %s.schema must be a mapping, got %s" % (
+            schema_path, type(schema_meta).__name__))
+
+    for key in ("name", "version", "source"):
+        if key not in schema_meta:
+            raise ValueError("Schema at %s missing schema.%s" % (schema_path, key))
+
+    if "fields" not in schema_data or not isinstance(schema_data["fields"], list):
+        raise ValueError("Schema at %s missing or invalid 'fields' list" % schema_path)
+
+    for i, field in enumerate(schema_data["fields"]):
+        if not isinstance(field, dict):
+            raise ValueError("Schema at %s field[%d] must be a mapping, got %s" % (
+                schema_path, i, type(field).__name__))
+        for key in ("field", "type", "required"):
+            if key not in field:
+                raise ValueError("Schema at %s field[%d] ('%s') missing required key '%s'" % (
+                    schema_path, i, field.get("field", "?"), key))
+
+    return True
+
+
+def single_file_main():
+    """
+    Main entry point for single-file validate-schema mode.
+    (Backward-compatible with the original interface.)
+    """
+    # Extract --quiet / --agent-mode
     args = sys.argv[1:]
     quiet_mode = "--quiet" in args
     if quiet_mode:
@@ -1180,7 +1653,6 @@ def main():
     sys.argv = [sys.argv[0]] + args
 
     try:
-        # Step 1
         data_type, file_path, schema_dir, dry_run = parse_validate_args()
 
         cwd = str(Path.cwd())
@@ -1189,33 +1661,30 @@ def main():
             rel = rel[len(cwd)+1:]
         emit_log("INFO", "Starting validation: %s -> %s" % (data_type, rel))
 
-        # Step 2
         schema_data, schema_path = load_and_validate_schema(data_type, schema_dir)
 
-        # Step 3
         emit_log("INFO", "Loading data file: %s" % file_path)
         data = load_yaml_safe(file_path)
         if data is None:
             emit_log("ERROR", "Data file is empty: %s" % file_path)
             emit_result(ExitCode.INVALID_INPUT, {
                 "verdict": "FAIL", "data_type": data_type,
-                "file_path": repo_relative_path(file_path), "schema_file": repo_relative_path(schema_path),
+                "file_path": repo_relative_path(file_path),
+                "schema_file": repo_relative_path(schema_path),
                 "error": "Data file is empty: %s" % file_path
             })
-            return None  # Defensive: emit_result calls sys.exit(), but guards against future refactor
         if not isinstance(data, dict):
             emit_log("ERROR", "Data file root must be a mapping (dict), got %s" % type(data).__name__)
             emit_result(ExitCode.INVALID_INPUT, {
                 "verdict": "FAIL", "data_type": data_type,
-                "file_path": repo_relative_path(file_path), "schema_file": repo_relative_path(schema_path),
+                "file_path": repo_relative_path(file_path),
+                "schema_file": repo_relative_path(schema_path),
                 "error": "Data file root must be a mapping (dict), got %s" % type(data).__name__
             })
-            return None  # Defensive: emit_result calls sys.exit(), but guards against future refactor
 
         schema_fields = schema_data.get("fields", [])
         field_count = _count_fields(schema_fields)
 
-        # Step 3b: Dry-run
         if dry_run:
             sname = schema_data.get("schema", {}).get("name", "Unknown")
             emit_log("INFO", "[DRY-RUN] Would validate '%s' against '%s'" % (rel, sname))
@@ -1225,12 +1694,12 @@ def main():
             emit_log("INFO", "[DRY-RUN] Dry run complete")
             emit_result(ExitCode.SUCCESS, {
                 "verdict": "DRY_RUN", "data_type": data_type,
-                "file_path": repo_relative_path(file_path), "schema_file": repo_relative_path(schema_path),
+                "file_path": repo_relative_path(file_path),
+                "schema_file": repo_relative_path(schema_path),
                 "dry_run": True, "field_checks_planned": field_count,
                 "message": "Dry run complete. --dry-run is informative only."
             })
 
-        # Step 4: Base field validation
         emit_log("INFO", "Running %d field checks..." % field_count)
         violations = []
         warnings_list = []
@@ -1250,19 +1719,16 @@ def main():
             len(_count_by_type(violations, "RANGE_VIOLATION")),
         ))
 
-        # Step 5: Custom validation
         emit_log("INFO", "Running custom validation rules for '%s'..." % data_type)
         custom_err, custom_warn = run_custom_validations(data_type, data, violations, warnings_list)
         emit_log("INFO", "Custom rules: %d errors, %d warnings" % (custom_err, custom_warn))
 
-        # Step 6: Assemble
         exit_code, result = assemble_verdict(
             violations, warnings_list,
             required_present, optional_missing,
             data_type, file_path, schema_path
         )
 
-        # Step 7: Emit
         emit_log("INFO", "Verdict: %s (exit %d)" % (result["verdict"], exit_code.value))
         emit_result(exit_code, result)
 
@@ -1271,17 +1737,98 @@ def main():
         emit_result(ExitCode.INTERNAL_ERROR, {
             "error": str(e),
             "traceback": traceback.format_exc(),
-            "data_type": sys.argv[1] if len(sys.argv) > 1 else "?",
-            "file_path": sys.argv[2] if len(sys.argv) > 2 else "?"
         })
     except Exception as e:
         emit_log("FATAL", "Unexpected error: %s" % e)
         emit_result(ExitCode.INTERNAL_ERROR, {
             "error": "Unexpected error: %s" % e,
             "traceback": traceback.format_exc(),
-            "data_type": sys.argv[1] if len(sys.argv) > 1 else "?",
-            "file_path": sys.argv[2] if len(sys.argv) > 2 else "?"
         })
+
+
+# ============================================================================
+# MAIN DISPATCH
+# ============================================================================
+
+def main():
+    """
+    Dispatch to batch mode (--all, --niche N-XXX) or single-file mode.
+    """
+    args = sys.argv[1:]
+
+    # Global flags
+    quiet_mode = "--quiet" in args
+    if quiet_mode:
+        args.remove("--quiet")
+    agent_mode = "--agent-mode" in args
+    if agent_mode:
+        args.remove("--agent-mode")
+    if agent_mode:
+        set_agent_mode(True)
+    elif quiet_mode:
+        set_quiet_mode(True)
+
+    verbose = "--verbose" in args
+    if verbose:
+        args.remove("--verbose")
+
+    # Restore sys.argv for downstream parsing
+    sys.argv = [sys.argv[0]] + args
+
+    # Detect batch mode: --all or --niche N-XXX
+    batch_all = "--all" in args
+    batch_niche = None
+    if "--niche" in args:
+        nidx = args.index("--niche")
+        if nidx + 1 < len(args) and not args[nidx + 1].startswith("--"):
+            batch_niche = args[nidx + 1]
+            args.remove(batch_niche)
+        else:
+            emit_log("ERROR", "--niche requires a niche ID argument (e.g., N-001)")
+            emit_result(ExitCode.INVALID_INPUT, {
+                "error": "--niche requires a niche ID argument",
+                "usage": "./validate-schema --niche N-XXX",
+            })
+        args.remove("--niche")
+    sys.argv = [sys.argv[0]] + args
+
+    if batch_all or batch_niche:
+        # ── Batch mode ─────────────────────────────────────────────────
+        schemas_dir = SCHEMAS_DIR
+        if "--schema-dir" in args:
+            sdidx = args.index("--schema-dir")
+            if sdidx + 1 < len(args) and not args[sdidx + 1].startswith("--"):
+                schemas_dir = Path(args[sdidx + 1]).resolve()
+        if not schemas_dir.exists():
+            emit_result(ExitCode.INVALID_INPUT, {
+                "error": "Schema directory not found",
+                "schema_dir": str(schemas_dir),
+            })
+
+        # Resolve target niches
+        import glob as glob_module
+        if batch_all:
+            target_niches = get_niche_directories()
+            if not target_niches:
+                emit_result(ExitCode.INVALID_INPUT, {
+                    "error": "No niche directories found under research/",
+                })
+        else:
+            from lib.pipeline_ops import _RESEARCH_DIR as _RES_DIR
+            niche_dir = _RES_DIR / batch_niche
+            if not niche_dir.is_dir():
+                emit_result(ExitCode.INVALID_INPUT, {
+                    "error": f"Niche directory not found: {niche_dir}",
+                    "niche_id": batch_niche,
+                })
+            target_niches = [niche_dir]
+
+        exit_code, results = scan_and_validate(target_niches, schemas_dir, verbose)
+        emit_result(exit_code, results)
+
+    else:
+        # ── Single-file mode (backward compatible) ──────────────────────
+        single_file_main()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,41 @@
+# MCP_SCHEDULE.yaml — Per-server concurrent capacity for MCP calls
+#
+# Created: 2026-07-23 (Workstream C, SRE-M05 fix)
+# Agents default to 1 concurrent call/server if this file is missing.
+# After calibration, update actual limits here.
+
+mcp_servers:
+  brave_search:
+    max_concurrent: 2
+    requests_per_minute: 30
+    notes: "2,000 queries/month free tier"
+  reddit_research:
+    max_concurrent: 2
+    requests_per_minute: 10
+    notes: "Anonymous access: 10 req/min. OAuth: 100 req/min."
+  open_registry:
+    max_concurrent: 1
+    requests_per_minute: 5
+    notes: "3 countries/60s free tier. Per-agent throttle: 5 req/min."
+  financial_hub:
+    max_concurrent: 2
+    requests_per_minute: 30
+    notes: "Unlimited, no key required"
+  paperplain:
+    max_concurrent: 2
+    requests_per_minute: 30
+    notes: "Unlimited, no key"
+  jina_ai:
+    max_concurrent: 2
+    requests_per_minute: 30
+    notes: "1M tokens free"
+  context7:
+    max_concurrent: 3
+    requests_per_minute: 60
+    notes: "Unlimited — official docs lookup"
+  google_cse:
+    max_concurrent: 1
+    requests_per_minute: 5
+    notes: "100 searches/day"
+
+last_updated: '2026-07-23'

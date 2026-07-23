@@ -1,15 +1,145 @@
+# TIMEOUT_CONFIG.yaml — Structured 3-level timeouts per tool
+#
+# Three levels per entry:
+#   connect:  Time to establish TCP connection
+#   read:     Time to receive first byte of response body
+#   total:    Hard kill — wall-clock max for entire operation
+#
+# Design principles (Netflix Chaos Engineering: assume failure):
+#   - Connect timeout SHORT (5-10s) — if a host is unreachable, fail fast
+#   - Read timeout MEDIUM (15-45s) — most responses arrive within this window
+#   - Total timeout is the hard ceiling — if exceeded, mark TIMEOUT and use fallback
+#
+# Free APIs have longer timeouts because they are unreliable by nature.
+# Primary tools (Firecrawl, DataForSEO) have shorter timeouts with retry+fallback.
+#
+# Last updated: 2026-07-23
+# Source: WORKSTREAM-C RELIABILITY FIX — restructured to 3-level per SRE-MB4
+
 firecrawl:
-  search: 30
-  scrape: 60
-  crawl: 120
-  map: 30
+  search:
+    connect: 10
+    read: 30
+    total: 60
+  scrape:
+    static:
+      connect: 10
+      read: 30
+      total: 45          # Static pages resolve quickly
+    js_rendered:
+      connect: 10
+      read: 45
+      total: 90          # JS rendering adds latency (SRE-MB5 fix: was 60s → 90s)
+  crawl:
+    per_page:
+      connect: 10
+      read: 30
+      total: 60          # Per-page within a crawl job
+  map:
+    connect: 10
+    read: 30
+    total: 60
+  interact:
+    per_action:
+      connect: 10
+      read: 45
+      total: 90          # Browser automation is slow
+
 dataforseo:
-  serp: 30
-  keywords: 30
-  labs: 30
-  domain_tech: 30
-  onpage: 30
+  serp:
+    live:
+      connect: 5
+      read: 15
+      total: 30          # Live queue is fast
+    standard:
+      connect: 5
+      read: 15
+      total: 310         # Standard queue: up to 5 min (SRE-C01 fix: was 30s → 310s)
+  keywords:
+    connect: 5
+    read: 15
+    total: 30
+  labs:
+    connect: 5
+    read: 15
+    total: 30
+  domain_tech:
+    connect: 5
+    read: 15
+    total: 30
+  onpage:
+    connect: 5
+    read: 15
+    total: 30
+
 agent:
-  phase_timeout: 600
-  canvas_assembly: 900
+  phase_timeout:
+    connect: 10
+    read: 60
+    total: 600
+  canvas_assembly:
+    connect: 10
+    read: 60
+    total: 900
+
+free_apis:
+  gdelt:
+    connect: 15
+    read: 45
+    total: 90
+  eurostat:
+    connect: 15
+    read: 45
+    total: 90
+  oecd:
+    connect: 15
+    read: 45
+    total: 90
+  ted:
+    connect: 15
+    read: 45
+    total: 90
+  wikidata:
+    connect: 15
+    read: 45
+    total: 60
+  world_bank:
+    connect: 15
+    read: 45
+    total: 90
+  open_registry:
+    connect: 15
+    read: 30
+    total: 60
+  brandfetch:
+    connect: 10
+    read: 30
+    total: 60
+  open_page_rank:
+    connect: 10
+    read: 30
+    total: 60
+  youtube_data:
+    connect: 10
+    read: 30
+    total: 60
+  currents_api:
+    connect: 15
+    read: 45
+    total: 90
+  techmap_jobs:
+    connect: 15
+    read: 45
+    total: 90
+
+mcp_servers:
+  context7:
+    connect: 5
+    read: 15
+    total: 30
+  default:
+    connect: 10
+    read: 30
+    total: 60
+
 last_updated: '2026-07-23'

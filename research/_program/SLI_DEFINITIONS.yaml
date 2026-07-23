@@ -1,9 +1,26 @@
 # SLI_DEFINITIONS.yaml — Service Level Indicators
+#
+# Workstream C fixes applied (2026-07-23):
+#   SRE-M01: Loosen credit_forecast_accuracy target from 20% to 50% (first 5 niches)
+#   SRE-M02: Exclude NON_RETRYABLE (401/402/403/404) from fetch_success_rate denominator
+#   SRE-M03: Add single_source_ratio qualifier to evidence_quality
+
 slis:
   fetch_success_rate:
-    description: "Percentage of tool fetch requests that succeed (non-error HTTP response)"
+    description: >
+      Percentage of tool fetch requests that succeed (non-error HTTP response).
+      NON_RETRYABLE errors (401, 402, 403, 404) are EXCLUDED from the denominator
+      because they represent auth/permissions failures, not pipeline reliability issues.
+      RETRYABLE errors (429, 500, 502, 503) ARE included — these indicate resource
+      contention or server issues that the pipeline should handle.
     target: ">95%"
-    measurement: "TOOL_ERROR_LOG.yaml error count / total fetch operations per niche"
+    measurement: >
+      RETRYABLE_ERROR_COUNT / (RETRYABLE_TOTAL) per niche.
+      RETRYABLE errors are: 429, 500, 502, 503.
+      NON_RETRYABLE errors (401, 402, 403, 404) logged separately
+      but excluded from availability calculations.
+    non_retryable_codes: [401, 402, 403, 404]
+    retryable_codes: [429, 500, 502, 503]
 
   freshness_compliance:
     description: "Percentage of source data files within their freshness SLA at canvas finalization"
@@ -11,8 +28,11 @@ slis:
     measurement: "FRESHNESS_VIOLATION_LOG.yaml violation count / total source files"
 
   credit_forecast_accuracy:
-    description: "How closely actual credit consumption matches per-niche estimates"
-    target: "Within 20% of estimate"
+    description: >
+      How closely actual credit consumption matches per-niche estimates.
+      Target loosened to 50% for the first 5 niches (uncalibrated system).
+      Tighten to 20% after calibration data stabilizes (niche 6+).
+    target: "Within 50% of estimate (first 5 niches), Within 20% (niche 6+)"
     measurement: "CREDIT_BUDGET.yaml actual vs. estimated per niche"
 
   per_niche_wall_clock:
@@ -21,9 +41,18 @@ slis:
     measurement: "PIPELINE_CHECKPOINTS.yaml phase timestamps"
 
   evidence_quality:
-    description: "Percentage of canvas claims graded [E] or higher"
-    target: ">50%"
+    description: >
+      Percentage of canvas claims graded [E] or higher.
+      If >50% of data types for a niche are single-source (single_source_ratio > 0.5),
+      the target is adjusted downward proportionally since single-source niches
+      cannot achieve high [P] grades by definition.
+    target: ">50% (adjusted for single_source_ratio)"
     measurement: "Canvas frontmatter evidence_distribution"
+    qualifiers:
+      single_source_ratio:
+        description: "Fraction of data types with only one independent source"
+        threshold: 0.50
+        adjustment: "If single_source_ratio > 0.5, target becomes >25%"
 
   pipeline_availability:
     description: "Percentage of time the pipeline is able to process niches (not blocked by tool outages)"

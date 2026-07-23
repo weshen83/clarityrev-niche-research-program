@@ -1,0 +1,244 @@
+# DATA-COVERAGE-MATRIX.yaml — Per-niche data availability coverage matrix
+#
+# Purpose: Normalize fertility/RIOS scores for data availability differences.
+# Data-sparse niches (consulting, fractional executive, agencies) are not
+# inherently worse — they have less digital exhaust. This matrix tracks what
+# data is available per niche and computes a coverage_factor used to adjust
+# scores so that all niches are compared fairly.
+#
+# Source: PLAN-workstreams-DEF.md (D-C2), NICHE-METHODOLOGY.md §14
+# Created: 2026-07-23
+
+version: '1.0'
+created: '2026-07-23'
+description: Per-niche data availability coverage matrix for score normalization
+
+schema:
+  required_data_types:
+    - market_size_gov_api        # EUROSTAT, OECD, World Bank
+    - competitor_profiles        # Competitor websites, G2, Crunchbase
+    - review_corpus              # G2 reviews, Google Reviews, Reddit
+    - buyer_language             # Verbatim quotes from reviews, forums, social
+    - pricing_public             # Public pricing pages, G2 price mentions
+    - trigger_signals            # Job changes, funding, tech changes, news
+    - tech_architecture          # Stackshare, BuiltWith, job postings
+    - ecosystem_players          # Aggregators, partners, channels
+    - customer_journey           # Journey design (always [S] — design work)
+    - hiring_signals             # Active job postings, headcount changes
+    - funding_signals            # Crunchbase, PitchBook, press releases
+    - news_signals               # GDELT, Google News, industry press
+  total_required: 12
+
+  type_definitions:
+    market_size_gov_api:
+      tier: PRIMARY
+      description: Government/IGO API data for market sizing (EUROSTAT, OECD, World Bank, CBS)
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Use Tier 2 Firecrawl search — cap at [H]"
+    competitor_profiles:
+      tier: PRIMARY
+      description: Top 5-8 competitors with positioning, funding, headcount
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Flag as SPARSE — use private company inference [H]"
+    review_corpus:
+      tier: PRIMARY
+      description: ">=10 reviews from >=1 source (G2, Google, Reddit, Trustpilot)"
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Accept [H] for VOC — supplement with LinkedIn forums"
+    buyer_language:
+      tier: PRIMARY
+      description: Verbatim buyer quotes from reviews, forums, social media
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Use LinkedIn group posts + industry interviews [H]"
+    pricing_public:
+      tier: PRIMARY
+      description: Public pricing pages or G2 price mentions
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Use indirect sources (job budgets, case studies) — mark [E]"
+    trigger_signals:
+      tier: PRIMARY
+      description: "10+ trigger events with detectability evidence"
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Use analogous niches — cap at [H]"
+    tech_architecture:
+      tier: SECONDARY
+      description: Tool stack inference (BuiltWith, Stackshare, job reqs)
+      grade_if_available: "[E] (with tool)"
+      grade_if_unavailable: "Cap at [H] — no tool available"
+    ecosystem_players:
+      tier: DESIGN
+      description: Aggregator/channel/partner candidates — design work, not extraction
+      grade_if_available: "Always [S] — design section"
+      grade_if_unavailable: "N/A — design work, not data extraction"
+    customer_journey:
+      tier: DESIGN
+      description: Journey maps, TTV, breakeven — design work
+      grade_if_available: "Always [S] — design section"
+      grade_if_unavailable: "N/A — design work, not data extraction"
+    hiring_signals:
+      tier: VOLATILE
+      description: Active job postings, headcount changes, new roles
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Accept SOURCE_UNAVAILABLE — collect in Phase 3"
+    funding_signals:
+      tier: VOLATILE
+      description: Recent funding rounds, acquisitions
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Cap at [H] for private companies"
+    news_signals:
+      tier: VOLATILE
+      description: Recent news, press coverage, industry events
+      grade_if_available: "[E]"
+      grade_if_unavailable: "Cap at [H] for non-English news"
+
+normalization:
+  formula: "adjusted_fertility = raw_fertility x (1 + (1 - coverage_factor) x 0.2)"
+  private_company_adjustment: 0.15
+  private_company_adjustment_note: "Subtract 0.15 from coverage_factor for HIGH private_company_prevalence"
+  description: "The normalization factor 0.2 raises data-sparse niches by ~0.15-0.30 fertility points - enough for fair ranking, not enough to mask genuine weakness. A niche with 50% coverage (6/12 data types) gets a 1.1x multiplier. A niche with 25% coverage gets 1.15x. These boosts prevent gaming while ensuring data-sparse niches are not systematically under-ranked."
+
+# Bootstrap entries — populated during calibration
+# CAL-A: Mid-Market IT Staffing (data-rich, digital-forward)
+# CAL-B: B2B Fractional Executive (data-sparse, relationship-driven)
+niches:
+  CAL-A:
+    label: "Mid-Market IT Staffing"
+    data_types:
+      market_size_gov_api:
+        available: true
+        sources: ["EUROSTAT", "OECD", "CBS StatLine"]
+        quality: "B"
+        note: "Gov API available for staffing market data"
+      competitor_profiles:
+        available: true
+        sources: ["Firecrawl search", "G2", "Crunchbase"]
+        quality: "B"
+        note: "Public competitors with web presence"
+      review_corpus:
+        available: true
+        sources: ["G2", "Google Reviews", "Reddit r/staffing"]
+        quality: "B"
+        note: "Multiple review sources, English-dominant"
+      buyer_language:
+        available: true
+        sources: ["Reddit", "LinkedIn", "G2 reviews"]
+        quality: "C"
+        note: "English-dominant; Dutch-language limited to LinkedIn NL"
+      pricing_public:
+        available: true
+        sources: ["Competitor websites", "G2"]
+        quality: "B"
+        note: "Public pricing common in IT staffing"
+      trigger_signals:
+        available: true
+        sources: ["Job boards", "LinkedIn API", "Crunchbase"]
+        quality: "B"
+        note: "Multiple trigger types detectable"
+      tech_architecture:
+        available: true
+        sources: ["BuiltWith", "Job postings", "LinkedIn tech tags"]
+        quality: "C"
+        note: "Tool inference from job requirements"
+      ecosystem_players:
+        available: false
+        sources: []
+        quality: "S"
+        note: "Design section — no tool automation possible"
+      customer_journey:
+        available: false
+        sources: []
+        quality: "S"
+        note: "Design section — no tool support"
+      hiring_signals:
+        available: true
+        sources: ["LinkedIn API", "Indeed", "Glassdoor"]
+        quality: "B"
+        note: "Active hiring visible via job boards"
+      funding_signals:
+        available: true
+        sources: ["Crunchbase", "PitchBook"]
+        quality: "C"
+        note: "Crunchbase limited for private companies"
+      news_signals:
+        available: true
+        sources: ["GDELT", "Firecrawl news"]
+        quality: "C"
+        note: "English-dominant; NL news requires supplement"
+    coverage_factor: 0.83
+    private_company_prevalence: LOW
+    normalization:
+      raw_score: 0.0  # Placeholder — filled during calibration
+      coverage_factor: 0.83
+      adjusted_score: 0.0  # Placeholder
+
+  CAL-B:
+    label: "B2B Fractional Executive"
+    data_types:
+      market_size_gov_api:
+        available: false
+        sources: []
+        quality: "H"
+        note: "No gov API category for fractional exec — use industry reports (Tier 2)"
+      competitor_profiles:
+        available: false
+        sources: ["Firecrawl search"]
+        quality: "H"
+        note: "Fragmented market with few public competitors"
+      review_corpus:
+        available: false
+        sources: ["LinkedIn recommendations"]
+        quality: "H"
+        note: "Review platforms don't cover fractional exec services"
+      buyer_language:
+        available: true
+        sources: ["LinkedIn posts", "Industry forums", "Clubs"]
+        quality: "C"
+        note: "Available via LinkedIn groups and executive forums"
+      pricing_public:
+        available: false
+        sources: []
+        quality: "H"
+        note: "Pricing is private/negotiated — no public pricing pages"
+      trigger_signals:
+        available: true
+        sources: ["LinkedIn API", "Executive job changes"]
+        quality: "C"
+        note: "Job changes and board appointments are detectable"
+      tech_architecture:
+        available: false
+        sources: []
+        quality: "H"
+        note: "Fractional execs rarely publicize tech stack"
+      ecosystem_players:
+        available: false
+        sources: []
+        quality: "S"
+        note: "Design section"
+      customer_journey:
+        available: false
+        sources: []
+        quality: "S"
+        note: "Design section"
+      hiring_signals:
+        available: false
+        sources: []
+        quality: "H"
+        note: "Fractional engagements rarely advertised as jobs"
+      funding_signals:
+        available: false
+        sources: []
+        quality: "H"
+        note: "Fractional execs are individuals, not funded companies"
+      news_signals:
+        available: true
+        sources: ["LinkedIn", "Industry press"]
+        quality: "C"
+        note: "Executive appointment announcements visible"
+    coverage_factor: 0.33
+    private_company_prevalence: HIGH
+    normalization:
+      raw_score: 0.0  # Placeholder
+      coverage_factor: 0.33
+      private_company_adjustment: 0.15
+      effective_coverage: 0.18  # 0.33 - 0.15 for private companies
+      adjusted_score: 0.0  # Placeholder
