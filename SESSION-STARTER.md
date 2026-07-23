@@ -55,6 +55,8 @@ SOURCE DOCUMENTS (read the ones marked R before this session)
 [ ]    AGENT-CONTEXT-SPEC.md — token budgets, context loading spec
 [ ]    RUNBOOK.md — incident response, recovery procedures
 [ ] R  PHASE-0-CALIBRATION.md (research/_pipelines/) — stage-by-stage execution commands
+[ ] R  references/firecrawl-comprehensive-reference.md — every Firecrawl command, costs, patterns (32 sections)
+[ ] R  references/data-sources-reference.md — every other tool (DataForSEO, MCPs, free APIs, use-case matrix)
 
 TRACKING FILES (verify these exist and parse)
 [ ] research/_program/LEDGER.yaml — niche ledger

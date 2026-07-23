@@ -8,6 +8,45 @@
 
 ---
 
+## Tool Reference Documents (BINDING — ALWAYS LOAD RELEVANT SECTIONS)
+
+Every niche agent MUST consult the appropriate tool reference documents based on the tools used in its phase. These are the canonical, verified references — do NOT use the tool from memory or from training data.
+
+### Reference Documents
+
+| Document | Path | Covers |
+|---|---|---|
+| **Firecrawl Comprehensive Reference** | `references/firecrawl-comprehensive-reference.md` | Every Firecrawl CLI command: search, scrape, map, crawl, interact, agent, monitor, download, parse, search-feedback. Credit costs, optimization strategies, niche research patterns, security/output handling. 32 sections, 1,419 lines. |
+| **Data Sources Comprehensive Reference** | `references/data-sources-reference.md` | DataForSEO (all 9 APIs with endpoints, pricing, workflows), Apollo, Hunter, BuiltWith, Wappalyzer, Crunchbase, Clearbit, Google Trends, SimilarWeb, Reddit API, free APIs (EUROSTAT, OECD, SEC EDGAR, OpenAlex, etc.), MCP servers (Brave Search, Reddit Research, CrawlForge, FetchSERP, Context7, etc.), use case matrix, pricing comparison. 500+ lines. |
+
+### Per-Phase Tool Loading (load ONLY the sections needed)
+
+**Phase 1 (Niche Bounding):**
+- Firecrawl Ref §3 (search), §4 (scrape), §29 (niche research patterns), §30 (credit optimization)
+- Data Sources Ref §1.2 (SERP API), §1.3 (Keywords API), §5.2 (market sizing)
+
+**Phase 2 (Deep Research):**
+- Firecrawl Ref §3 (search), §4 (scrape), §5 (map), §6 (crawl), §8 (agent), §9 (monitor), §29 (competitor analysis pipeline, pricing extraction, review scraping, company research), §30 (credit optimization)
+- Data Sources Ref §1.2-1.9 (all DataForSEO APIs), §2 (B2B providers), §3 (free APIs), §4 (MCP servers), §5 (use case matrix — all subsections)
+
+**Phase 3 (Commercial Design):**
+- Firecrawl Ref §4 (scrape with --query for targeted extraction), §8 (agent with --schema for structured pricing extraction)
+- Data Sources Ref §1.3 (Keywords API for WTP signals), §5.6 (technographics), §5.3 (buyer intent)
+
+**Phase 4 (Scoring & QA):**
+- Firecrawl Ref §30 (credit optimization — verify no waste before finalizing)
+- Data Sources Ref §1.11 (AI-optimized responses for verification queries)
+
+**Phase 0 (Calibration):**
+- Firecrawl Ref §2 (CLI setup + auth), §3 (search), §4 (scrape), §12 (search-feedback), §30 (credit optimization)
+- Data Sources Ref §1.1-1.3 (DataForSEO platform overview, SERP, Keywords)
+
+### Rule
+
+**Before using ANY tool command, check the reference doc for the correct flags, credit cost, and best practices.** Training-data knowledge of these tools is frequently outdated or wrong. The reference docs were compiled from official skill definitions and verified against live API behavior.
+
+---
+
 ## Phase 1: Niche Bounding
 
 **Context budget:** ~40K tokens
