@@ -8,9 +8,8 @@ __pycache__/
 .firecrawl/
 .dataforseo/
 
-# Credentials (never commit)
-CREDENTIALS.yaml
-_program/CREDENTIALS.yaml
+# Credentials tracking — env-var references only, no actual keys
+# Actual keys stored in ~/.claude/settings.json under "env" field
 
 # Dashboard output (generated, not source)
 DASHBOARD_LATEST.yaml
