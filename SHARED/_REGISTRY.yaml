@@ -1,0 +1,9 @@
+version: '1.0'
+created: '2026-07-23'
+description: Shared resource registry for niche-program pipelines
+subdirectories:
+- cache
+- locks
+- sessions
+- templates
+- logs

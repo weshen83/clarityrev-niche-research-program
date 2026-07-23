@@ -1,0 +1,15 @@
+firecrawl:
+  search: 30
+  scrape: 60
+  crawl: 120
+  map: 30
+dataforseo:
+  serp: 30
+  keywords: 30
+  labs: 30
+  domain_tech: 30
+  onpage: 30
+agent:
+  phase_timeout: 600
+  canvas_assembly: 900
+last_updated: '2026-07-23'

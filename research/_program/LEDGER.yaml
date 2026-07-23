@@ -1,0 +1,12 @@
+niches:
+  CAL-A:
+    type: calibration
+    status: in_progress
+    description: Mid-Market IT Staffing Agencies on Bullhorn
+    data_richness: high
+  CAL-B:
+    type: calibration
+    status: in_progress
+    description: B2B Fractional Executive Services for Mid-Market
+    data_richness: sparse
+last_updated: '2026-07-23'
