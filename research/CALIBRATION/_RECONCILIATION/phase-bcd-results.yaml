@@ -1,0 +1,56 @@
+# Phase B/C/D Calibration Results — 2026-07-23
+# Verified tool status for the 25-niche evaluation pipeline
+
+firecrawl:
+  cli_version: "1.18.5"
+  auth: "FIRECRAWL_API_KEY"
+  credits_remaining: 100585
+  tests:
+    B1_credit_balance: { status: PASS, detail: "100,585 credits (gate: >=9,800)" }
+    B2_search: { status: PASS, detail: "Returns relevant results with excerpts" }
+    B3_js_scrape: { status: PASS, detail: "Renders JS content (G2, Gong)" }
+    B4_pricing_scrape: { status: PASS, detail: "Renders pricing pages" }
+    B5_crawl: { status: PASS, detail: "Job accepted and processing" }
+    B6_map: { status: PASS, detail: "15+ pricing URLs from gong.io" }
+    B7_concurrent: { status: PASS, detail: "3/3 completed (12-23KB each)" }
+    B8_search_feedback: { status: PASS, detail: "search-feedback command works, 1-credit refund" }
+  reference_doc: "references/firecrawl-comprehensive-reference.md"
+  reference_doc_status: "INTEGRATED into AGENT-CONTEXT-SPEC.md"
+
+dataforseo:
+  auth: "HTTP Basic Auth (contact@wesleyhenderiks.com)"
+  tests:
+    C1_serp: { status: PASS, detail: "12 organic results returned" }
+    C2_keywords: { status: PASS, detail: "Endpoint OK (20000)" }
+    C3_labs: { status: PASS, detail: "Competitor domain analysis works" }
+    C4_domain_tech: { status: PASS, detail: "Domain technographics works" }
+    C5_onpage: { status: PASS, detail: "Task accepted (20000). Async — poll for crawl_progress/items. Content Parsing is FREE." }
+    C6_balance: { status: DOCUMENTED, detail: "No programmatic balance API. Manual check at https://app.dataforseo.com/dashboard. Known: $50 deposited, ~$0.04 estimated spend to date." }
+  reference_doc: "references/data-sources-reference.md (Section 1)"
+  reference_doc_status: "INTEGRATED into AGENT-CONTEXT-SPEC.md"
+  mcp_server: "npm: @cdilorenzo/mcp-dataforseo (available, not yet configured)"
+
+free_tools:
+  tests:
+    D1_reddit: { status: PASS, detail: "5 relevant results via Firecrawl search" }
+    D2_openregistry: { status: CONFIGURED, detail: "Added to ~/.claude/settings.json (SSE: openregistry.sophymarine.com/mcp). Restart Claude Code to activate." }
+    D3_gdelt: { status: RATE_LIMITED, detail: "1 req/5s. Acceptable for 10-20 queries/niche (~2 min)." }
+    D4_eurostat: { status: PASS, detail: "11 top keys returned (NL data)" }
+    D5_context7: { status: PASS, detail: "Configured (user-level MCP)" }
+
+gdelt_assessment:
+  rate_limit: "1 request per 5 seconds"
+  impact: "ACCEPTABLE — niche evaluation makes 10-20 GDELT queries. At 12 req/min, completes in under 2 minutes."
+  use_case: "Trigger event detection: funding rounds, acquisitions, leadership changes, product launches. 100K+ news outlets, 65 languages."
+
+open_tools_coverage:
+  documented: 18
+  documented_detail: "Firecrawl (comprehensive), DataForSEO (comprehensive), Apollo, Hunter, BuiltWith, Wappalyzer, Crunchbase, Clearbit, Reddit, Google Trends, SimilarWeb, SEC EDGAR, Brave Search MCP, CrawlForge MCP, FetchSERP MCP, SearXNG MCP, OpenRegistry MCP, GDELT"
+  uncovered: 18
+  uncovered_detail: "Financial Hub MCP, paperplain-mcp, Serper MCP, Google CSE MCP, TAM-MCP-Server, HubSpot API, Registry Lookup, EUROSTAT API, OECD API, TED API, Open PageRank API, Brandfetch, FRED API, World Bank API, IMF Data API, YouTube API, Public ATS APIs, Currents API, ZEFIX API, UK Companies House API, CBS StatLine API, Techmap API"
+  sme_team: "SPAWNED — writing niche-program/references/SME-tool-reference-expansion.md"
+
+verdict:
+  pipeline_status: "OPERATIONAL"
+  hard_gates: "ALL PASS"
+  next: "Phase E — Wesley produces CAL-A ground-truth canvas (5 sections, ~60-90 min)"

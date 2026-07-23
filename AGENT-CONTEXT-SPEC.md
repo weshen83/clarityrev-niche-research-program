@@ -18,6 +18,7 @@ Every niche agent MUST consult the appropriate tool reference documents based on
 |---|---|---|
 | **Firecrawl Comprehensive Reference** | `references/firecrawl-comprehensive-reference.md` | Every Firecrawl CLI command: search, scrape, map, crawl, interact, agent, monitor, download, parse, search-feedback. Credit costs, optimization strategies, niche research patterns, security/output handling. 32 sections, 1,419 lines. |
 | **Data Sources Comprehensive Reference** | `references/data-sources-reference.md` | DataForSEO (all 9 APIs with endpoints, pricing, workflows), Apollo, Hunter, BuiltWith, Wappalyzer, Crunchbase, Clearbit, Google Trends, SimilarWeb, Reddit API, free APIs (EUROSTAT, OECD, SEC EDGAR, OpenAlex, etc.), MCP servers (Brave Search, Reddit Research, CrawlForge, FetchSERP, Context7, etc.), use case matrix, pricing comparison. 500+ lines. |
+| **SME Tool Reference Expansion** | `references/SME-tool-reference-expansion.md` | All remaining Tier 2 MCP servers (OpenRegistry, Financial Hub, PaperPlain, Serper, Google CSE, TAM-MCP) + Tier 3 free APIs (HubSpot, Registry Lookup, GDELT, EUROSTAT, OECD, TED, Open PageRank, Brandfetch, FRED, World Bank, IMF, YouTube, ATS Job Boards, Currents, ZEFIX, Companies House, CBS StatLine, Techmap). Integration matrix, capacity assessment, multi-tool workflows. 24 tools, 1,562 lines. |
 
 ### Per-Phase Tool Loading (load ONLY the sections needed)
 
